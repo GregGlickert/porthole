@@ -4,13 +4,11 @@ Which feature is running on which localhost port — in your macOS menu bar, lab
 
 ```
 ◉3
-:3001  Upload retry flow          ← click: open in Chrome · ⌥-click: copy URL
-    feat/upload · myapp ▸         ← submenu: description, uptime + label age, cwd, PID,
-                                     Open, Copy, Rename…, Remove label, Hide, Kill server… / Stop container… (asks first)
-:3003  fix/css                    ← running but nobody labeled it yet
-    unlabeled · node ▸            ← submenu has "Label this port…" (native text prompt)
-:8080  Main API
-    balance · api ▸               ← Docker ports show compose project · service, container and image
+:3001  Upload retry flow ▸        ← one row per port; submenu: branch · repo, description, uptime + label age,
+                                     cwd/PID, Open, Copy URL, Rename…, Remove label, Hide, Kill server… (asks first)
+:3003  fix/css · myapp ▸          ← running but nobody labeled it yet; submenu has "Label this port…"
+:8080  Main API ▸                 ← Docker ports: submenu shows compose project · service, container and image,
+                                     and Stop container… instead of Kill
 Settings ▸                        ← hidden ports/processes (click to unhide), port range, open config/labels file
 About Porthole ▸                  ← version, View on GitHub, open project folder
 Refresh

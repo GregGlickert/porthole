@@ -67,11 +67,13 @@ test('render: SwiftBar output has count, actions, docker ports in main list, no 
   const out = render(entries, { node: '/usr/bin/node', cli: '/p/cli.js' });
   const lines = out.split('\n');
   assert.match(lines[0], /^2 \| templateImage=[A-Za-z0-9+/=]+$/);
-  assert.match(out, /^:3001 {2}Upload \/ retry \| bash="\/usr\/bin\/node" param1="\/p\/cli.js" param2=open param3="3001"/m);
-  assert.match(out, /alternate=true/);
+  // One row per port: the title alone, with location and actions in its submenu.
+  assert.match(out, /^:3001 {2}Upload \/ retry$/m);
+  assert.match(out, /^--Open http:\/\/localhost:3001 \| bash="\/usr\/bin\/node" param1="\/p\/cli.js" param2=open param3="3001"/m);
+  assert.doesNotMatch(out, /^ {4}\S/m);
   assert.match(out, /--Kill server… .*param2=confirm-kill param3="3001"/);
   assert.doesNotMatch(out, /^Docker \(/m);
-  assert.match(out, /^:8080 {2}docker \|/m);
+  assert.match(out, /^:8080 {2}docker$/m);
   assert.match(out, /--Label this port… .*param3="8080"/);
   assert.doesNotMatch(out, /Kill server.*param3="8080"/);
   // No container identified (docker ps unavailable) → no stop action either.
@@ -115,11 +117,11 @@ test('render: docker entries show container names instead of backend PID', () =>
     { 8080: { port: 8080, title: 'Main API', cwd: null, registeredAt: new Date(Date.now() - 40 * 60e3).toISOString() } },
   );
   const out = render(entries, ctx);
-  assert.match(out, /^ {4}balance · api \| size=11/m);
+  assert.match(out, /^--balance · api \| size=11/m);
   assert.match(out, /--container balance-api-1 · image balance-api/);
   assert.match(out, /--up 1h · labeled 40m ago/);
   assert.doesNotMatch(out, /com\.docker\.backend/);
-  assert.match(out, /^:3000 {2}balance · frontend \|/m);
+  assert.match(out, /^:3000 {2}balance · frontend$/m);
   assert.match(out, /--Label this port… .*param3="3000"/);
   // Docker ports get "Stop container…" (docker stop) instead of killing Docker's PID.
   assert.match(out, /--Stop container… .*param2=confirm-kill param3="3000".*sfimage=stop\.circle/);
