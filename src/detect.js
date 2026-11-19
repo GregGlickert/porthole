@@ -19,6 +19,9 @@ export const IGNORE_COMMANDS = new Set([
 // Databases / caches that aren't web dev servers.
 export const IGNORE_PORTS = new Set([3306, 5432, 6379, 9200, 9300]);
 
+// Absolute path: MCP clients and SwiftBar often launch us with a PATH that lacks /usr/sbin.
+const LSOF = '/usr/sbin/lsof';
+
 export const DOCKER_COMMANDS = new Set(['com.docker.backend', 'com.docker.vpnkit', 'vpnkit-bridge', 'docker-proxy']);
 
 function run(cmd, args) {
@@ -169,7 +172,7 @@ export function gitInfo(cwd) {
 
 /** Every TCP port anything is listening on (no dev-range filtering). */
 export function listeningPorts() {
-  return new Set(parseLsofListen(run('lsof', ['-nP', '-iTCP', '-sTCP:LISTEN', '-F', 'pcn'])).map((e) => e.port));
+  return new Set(parseLsofListen(run(LSOF, ['-nP', '-iTCP', '-sTCP:LISTEN', '-F', 'pcn'])).map((e) => e.port));
 }
 
 /**
@@ -178,7 +181,7 @@ export function listeningPorts() {
  * @returns {Array<{port:number,pids:number[],command:string,cwd:string|null,branch:string|null,repo:string|null,docker:false|object,uptimeSec:number|null}>}
  */
 export function scan(config = loadConfig()) {
-  const raw = parseLsofListen(run('lsof', ['-nP', '-iTCP', '-sTCP:LISTEN', '-F', 'pcn'])).filter((e) =>
+  const raw = parseLsofListen(run(LSOF, ['-nP', '-iTCP', '-sTCP:LISTEN', '-F', 'pcn'])).filter((e) =>
     isDevCandidate(e, config),
   );
   const byPort = new Map();
@@ -192,7 +195,7 @@ export function scan(config = loadConfig()) {
   }
   const nonDockerPids = [...new Set([...byPort.values()].filter((s) => !s.docker).flatMap((s) => s.pids))];
   const cwds = nonDockerPids.length
-    ? parseLsofCwd(run('lsof', ['-a', '-p', nonDockerPids.join(','), '-d', 'cwd', '-Fpn']))
+    ? parseLsofCwd(run(LSOF, ['-a', '-p', nonDockerPids.join(','), '-d', 'cwd', '-Fpn']))
     : new Map();
   const etimes = nonDockerPids.length ? parsePsEtime(run('ps', ['-o', 'pid=,etime=', '-p', nonDockerPids.join(',')])) : new Map();
   const containers = [...byPort.values()].some((s) => s.docker) ? dockerPorts() : new Map();

@@ -10,10 +10,10 @@
 # <xbar.version>v0.1.0</xbar.version>
 # <xbar.author>Greg Glickert</xbar.author>
 # <xbar.author.github>GregGlickert</xbar.author.github>
-# <xbar.desc>Which feature is running on which localhost port — labeled by Claude via MCP.</xbar.desc>
+# <xbar.desc>Which feature is running on which localhost port — labeled by your coding agent via MCP.</xbar.desc>
 # <xbar.abouturl>https://github.com/GregGlickert/porthole</xbar.abouturl>
-# Installed by scripts/install.sh, which fills in NODE and CLI below.
-export PATH="/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/usr/local/bin:$PATH"
-NODE="__NODE__"
-CLI="__CLI__"
-exec "$NODE" "$CLI" swiftbar
+# Installed by scripts/install.sh, which fills in the launcher path below.
+# The launcher finds node at run time, so switching node versions doesn't break this plugin.
+# SwiftBar's PATH is minimal; add the usual Homebrew and Docker locations so lsof/git/docker resolve.
+export PATH="/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/usr/local/bin:$HOME/.docker/bin:$PATH"
+exec "__PORTHOLE__" swiftbar

@@ -1,6 +1,6 @@
 # Porthole
 
-Which feature is running on which localhost port — in your macOS menu bar, labeled by Claude.
+Which feature is running on which localhost port — in your macOS menu bar, labeled by your coding agent (Claude Code, Codex, Cursor, or any MCP client).
 
 ```
 ◉3
@@ -16,7 +16,7 @@ About Porthole ▸                  ← version, View on GitHub, open project fo
 Refresh
 ```
 
-- **MCP server** (`src/mcp.js`) — Claude calls `register_server(port, title, description?)` after starting a dev server. Branch and folder are detected automatically. Also `update_server`, `remove_server`, `list_servers` (optional `port` filter; includes uptime and Docker container info), and `suggest_free_port(preferred?, count?)`, which returns ports nothing is listening on and no label claims.
+- **MCP server** (`src/mcp.js`) — your agent calls `register_server(port, title, description?)` after starting a dev server. Branch and folder are detected automatically. Also `update_server`, `remove_server`, `list_servers` (optional `port` filter; includes uptime and Docker container info), and `suggest_free_port(preferred?, count?)`, which returns ports nothing is listening on and no label claims.
 - **SwiftBar plugin** — refreshes every 5s. Shows every listening port in 3000–9999 (system processes and DB ports filtered), with git branch, even if unregistered.
 - **No daemon** — labels live in `~/.porthole/servers.json`; live state comes from `lsof` each refresh.
 - **Stale labels** — if a different checkout starts listening on a labeled port, the old label is ignored (shown as "old label: …"). Labels for ports that stay dead 24h are pruned.
@@ -24,17 +24,52 @@ Refresh
 
 ## Install
 
+Requires macOS, Node 20+ and [SwiftBar](https://swiftbar.app).
+
 ```bash
 brew install --cask swiftbar          # launch it once and pick a plugin folder
-./scripts/install.sh                  # npm install + installs the SwiftBar plugin
-claude mcp add porthole -s user -- "$(command -v node)" "$PWD/src/mcp.js"
+git clone https://github.com/GregGlickert/porthole.git && cd porthole
+./scripts/install.sh
 ```
 
-Then add to `~/.claude/CLAUDE.md`:
+`install.sh` is safe to re-run. It installs dependencies, a launcher at `~/.porthole/bin/porthole`, and the SwiftBar plugin. The launcher finds node each time it runs (nvm default, `PATH`, Volta, Homebrew), so switching or removing node versions doesn't break the menu or your MCP config. To force a specific node, set `PORTHOLE_NODE=/path/to/node`.
 
-> When you start a local dev server (or the user tells you one is running), call the porthole `register_server` tool with its port and a ≤8-word title describing the feature/branch being tested. Update or remove it when that changes.
+## Connect your agent
 
-The plugin and MCP command pin the absolute node path. If you remove that node version (e.g. via nvm), rerun `install.sh` and the `claude mcp add` command.
+Every client runs the same stdio server: `~/.porthole/bin/porthole mcp`. Use the full path (`install.sh` prints it), because most clients don't expand `~`.
+
+**Claude Code**
+```bash
+claude mcp add porthole -s user -- ~/.porthole/bin/porthole mcp
+```
+
+**Codex**
+```bash
+codex mcp add porthole -- ~/.porthole/bin/porthole mcp
+```
+(or add `[mcp_servers.porthole]` with `command = "/Users/you/.porthole/bin/porthole"` and `args = ["mcp"]` to `~/.codex/config.toml`)
+
+**Cursor** (`~/.cursor/mcp.json`), **Claude Desktop** (`~/Library/Application Support/Claude/claude_desktop_config.json`), **Windsurf** (`~/.codeium/windsurf/mcp_config.json`):
+```json
+{
+  "mcpServers": {
+    "porthole": { "command": "/Users/you/.porthole/bin/porthole", "args": ["mcp"] }
+  }
+}
+```
+
+**VS Code** (`.vscode/mcp.json`, or the user-level MCP config):
+```json
+{
+  "servers": {
+    "porthole": { "type": "stdio", "command": "/Users/you/.porthole/bin/porthole", "args": ["mcp"] }
+  }
+}
+```
+
+The server already tells agents when to use it. For clients that ignore server instructions, add this to your agent rules (`~/.claude/CLAUDE.md`, `AGENTS.md`, Cursor rules, …):
+
+> When you start a local dev server (or the user says one is running), call the porthole `register_server` tool with its port and a ≤8-word title describing the feature/branch being tested. Call `suggest_free_port` before picking a port. Update or remove the label when that changes.
 
 ## CLI
 
@@ -42,7 +77,7 @@ The plugin and MCP command pin the absolute node path. If you remove that node v
 porthole list | register <port> <title> [desc] | remove <port> | open <port> | copy <port> | kill <port>
          | confirm-kill <port> | prompt-label <port> | ignore/unignore <port|command> | ignored | edit | swiftbar
 ```
-(`node src/cli.js …`, or `npm link` to get `porthole` on your PATH.)
+(Add `~/.porthole/bin` to your `PATH` to get the `porthole` command, or run `node src/cli.js …`.)
 
 ## Hiding ports
 
