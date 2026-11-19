@@ -86,6 +86,75 @@ export function isDevCandidate({ command, port }, config = {}) {
   );
 }
 
+/** Parse `ps -o pid=,etime=` output into Map<pid, seconds>. etime is [[dd-]hh:]mm:ss. */
+export function parsePsEtime(text) {
+  const map = new Map();
+  for (const line of text.split('\n')) {
+    const m = line.trim().match(/^(\d+)\s+(?:(\d+)-)?(?:(\d+):)?(\d+):(\d+)$/);
+    if (!m) continue;
+    const [, pid, d = 0, h = 0, mi, s] = m;
+    map.set(Number(pid), ((Number(d) * 24 + Number(h)) * 60 + Number(mi)) * 60 + Number(s));
+  }
+  return map;
+}
+
+const DOCKER_FORMAT = '{{.ID}}\t{{.Names}}\t{{.Image}}\t{{.Ports}}\t{{.Label "com.docker.compose.project"}}\t{{.Label "com.docker.compose.service"}}';
+
+/**
+ * Parse `docker ps --format DOCKER_FORMAT` output into Map<hostPort, container info>.
+ * Ports look like `0.0.0.0:8080->8080/tcp, [::]:8080->8080/tcp` or ranges `0.0.0.0:8000-8001->8000-8001/tcp`.
+ */
+export function parseDockerPs(text) {
+  const map = new Map();
+  for (const line of text.split('\n')) {
+    if (!line.trim()) continue;
+    const [id, container, image, ports = '', project = '', service = ''] = line.split('\t');
+    for (const part of ports.split(',')) {
+      const m = part.trim().match(/:(\d+)(?:-(\d+))?->(\d+)(?:-\d+)?\/tcp$/);
+      if (!m) continue;
+      const lo = Number(m[1]);
+      const hi = m[2] ? Number(m[2]) : lo;
+      for (let p = lo; p <= hi; p++) {
+        if (map.has(p)) continue;
+        map.set(p, {
+          id,
+          container,
+          image,
+          project: project || null,
+          service: service || null,
+          containerPort: Number(m[3]) + (p - lo),
+        });
+      }
+    }
+  }
+  return map;
+}
+
+/** Parse `docker inspect -f '{{.Id}}\t{{.State.StartedAt}}'` into Map<shortId, startedAt ms>. */
+export function parseDockerStarted(text) {
+  const map = new Map();
+  for (const line of text.split('\n')) {
+    const [id, started] = line.trim().split('\t');
+    const t = Date.parse(started);
+    if (id && Number.isFinite(t)) map.set(id.slice(0, 12), t);
+  }
+  return map;
+}
+
+/** Container info per published host port; empty map if docker is missing or not running. */
+export function dockerPorts(now = Date.now()) {
+  const ports = parseDockerPs(run('docker', ['ps', '--format', DOCKER_FORMAT]));
+  const ids = [...new Set([...ports.values()].map((c) => c.id))];
+  if (ids.length) {
+    const started = parseDockerStarted(run('docker', ['inspect', '-f', '{{.Id}}\t{{.State.StartedAt}}', ...ids]));
+    for (const c of ports.values()) {
+      const t = started.get(c.id.slice(0, 12));
+      c.uptimeSec = t ? Math.max(0, Math.round((now - t) / 1000)) : null;
+    }
+  }
+  return ports;
+}
+
 export function gitInfo(cwd) {
   if (!cwd || cwd === '/') return { branch: null, repo: null };
   const out = run('git', ['-C', cwd, 'rev-parse', '--abbrev-ref', 'HEAD', '--show-toplevel']).trim().split('\n');
@@ -98,9 +167,15 @@ export function gitInfo(cwd) {
   return { branch, repo: path.basename(out[1]) };
 }
 
+/** Every TCP port anything is listening on (no dev-range filtering). */
+export function listeningPorts() {
+  return new Set(parseLsofListen(run('lsof', ['-nP', '-iTCP', '-sTCP:LISTEN', '-F', 'pcn'])).map((e) => e.port));
+}
+
 /**
  * All listening dev-range ports, grouped by port.
- * @returns {Array<{port:number,pids:number[],command:string,cwd:string|null,branch:string|null,repo:string|null,docker:boolean}>}
+ * `docker` is false, or {container, image, project, service, containerPort} (`{}` if `docker ps` was unavailable).
+ * @returns {Array<{port:number,pids:number[],command:string,cwd:string|null,branch:string|null,repo:string|null,docker:false|object,uptimeSec:number|null}>}
  */
 export function scan(config = loadConfig()) {
   const raw = parseLsofListen(run('lsof', ['-nP', '-iTCP', '-sTCP:LISTEN', '-F', 'pcn'])).filter((e) =>
@@ -119,13 +194,20 @@ export function scan(config = loadConfig()) {
   const cwds = nonDockerPids.length
     ? parseLsofCwd(run('lsof', ['-a', '-p', nonDockerPids.join(','), '-d', 'cwd', '-Fpn']))
     : new Map();
+  const etimes = nonDockerPids.length ? parsePsEtime(run('ps', ['-o', 'pid=,etime=', '-p', nonDockerPids.join(',')])) : new Map();
+  const containers = [...byPort.values()].some((s) => s.docker) ? dockerPorts() : new Map();
   const gitCache = new Map();
   return [...byPort.values()]
     .map((s) => {
-      const cwd = s.docker ? null : cwds.get(s.pids[0]) ?? null;
+      if (s.docker) {
+        const c = containers.get(s.port);
+        const { uptimeSec = null, id, ...info } = c || {};
+        return { ...s, docker: info, cwd: null, branch: null, repo: c?.project || null, uptimeSec };
+      }
+      const cwd = cwds.get(s.pids[0]) ?? null;
       if (cwd && !gitCache.has(cwd)) gitCache.set(cwd, gitInfo(cwd));
       const { branch, repo } = cwd ? gitCache.get(cwd) : { branch: null, repo: null };
-      return { ...s, cwd, branch, repo };
+      return { ...s, cwd, branch, repo, uptimeSec: etimes.get(s.pids[0]) ?? null };
     })
     .sort((a, b) => a.port - b.port);
 }

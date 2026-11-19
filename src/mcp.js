@@ -3,15 +3,19 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { getBoard, register, updateLabel, remove } from './board.js';
+import fs from 'node:fs';
+import { getBoard, register, updateLabel, remove, suggestFreePorts } from './board.js';
+
+const PKG = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
 
 const server = new McpServer(
-  { name: 'porthole', version: '0.1.0' },
+  { name: 'porthole', version: PKG.version },
   {
     instructions:
       'Porthole tracks which feature/branch is running on which localhost port and shows it in the macOS menu bar. ' +
       'Whenever you start a local dev server (or the user says one is running), call register_server with its port and a short title ' +
-      'describing the feature being tested. Use list_servers to answer "what is on port X?".',
+      'describing the feature being tested. Before picking a port for a new dev server, call suggest_free_port to avoid collisions. ' +
+      'Use list_servers to answer "what is on port X?".',
   },
 );
 
@@ -64,7 +68,13 @@ server.registerTool(
     description: 'Clear the label for a port (does not stop the server).',
     inputSchema: { port },
   },
-  async ({ port }) => json({ removed: remove(port) }),
+  async ({ port }) => {
+    try {
+      return json({ removed: remove(port) });
+    } catch (err) {
+      return fail(err);
+    }
+  },
 );
 
 server.registerTool(
@@ -72,13 +82,36 @@ server.registerTool(
   {
     title: 'List dev servers',
     description:
-      'List every listening local dev server (ports 3000–9999) with its label, branch, repo folder and status ' +
-      '(labeled | unlabeled | stale — stale means a different checkout now owns the port).',
-    inputSchema: {},
+      'List every listening local dev server (ports 3000–9999) with its label, branch, repo folder, uptimeSec and status ' +
+      '(labeled | unlabeled | stale — stale means a different checkout now owns the port). ' +
+      'Docker-published ports include docker: {container, image, project, service, containerPort}. Pass port to get just one.',
+    inputSchema: { port: port.optional() },
   },
-  async () => {
+  async ({ port: only } = {}) => {
     try {
-      return json({ servers: getBoard() });
+      const servers = getBoard();
+      return json({ servers: only ? servers.filter((s) => s.port === only) : servers });
+    } catch (err) {
+      return fail(err);
+    }
+  },
+);
+
+server.registerTool(
+  'suggest_free_port',
+  {
+    title: 'Suggest free port',
+    description:
+      'Return free localhost port(s) in the dev range (default 3000–9999) that nothing is listening on and no label claims. ' +
+      'Call this before starting a new dev server so parallel checkouts do not collide.',
+    inputSchema: {
+      preferred: port.optional().describe('Start searching here, e.g. the framework default 3000'),
+      count: z.number().int().min(1).max(20).optional().describe('How many ports to return (default 1)'),
+    },
+  },
+  async ({ preferred, count }) => {
+    try {
+      return json({ ports: suggestFreePorts({ preferred, count }) });
     } catch (err) {
       return fail(err);
     }

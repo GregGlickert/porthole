@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseLsofListen, parseLsofCwd, isDevCandidate } from '../src/detect.js';
+import { parseLsofListen, parseLsofCwd, isDevCandidate, parseDockerPs, parseDockerStarted, parsePsEtime } from '../src/detect.js';
 
 const LSOF = `p652
 cControlCenter
@@ -56,4 +56,40 @@ test('isDevCandidate honors user config ignore lists and range', () => {
   assert.equal(isDevCandidate({ command: 'claude-science', port: 3500 }, cfg), false);
   assert.equal(isDevCandidate({ command: 'node', port: 4500 }, cfg), false);
   assert.equal(isDevCandidate({ command: 'node', port: 3500 }, cfg), true);
+});
+
+const DOCKER_PS = [
+  'a1b2c3d4e5f6\tbalance-api-1\tbalance-api\t0.0.0.0:5678->5678/tcp, [::]:5678->5678/tcp, 0.0.0.0:8080->8080/tcp, [::]:8080->8080/tcp\tbalance\tapi',
+  'b1b2c3d4e5f6\tbalance-postgres-1\tpostgres:17\t0.0.0.0:5432->5432/tcp\tbalance\tpostgres',
+  'c1b2c3d4e5f6\tworker\tredis\t6379/tcp\t\t',
+  'd1b2c3d4e5f6\tranged\tnginx\t0.0.0.0:9000-9001->80-81/tcp\t\t',
+].join('\n');
+
+test('parseDockerPs maps host ports to containers (dedupes v4/v6, ranges, unpublished)', () => {
+  const m = parseDockerPs(DOCKER_PS);
+  assert.deepEqual([...m.keys()].sort(), [5432, 5678, 8080, 9000, 9001]);
+  assert.deepEqual(m.get(8080), {
+    id: 'a1b2c3d4e5f6',
+    container: 'balance-api-1',
+    image: 'balance-api',
+    project: 'balance',
+    service: 'api',
+    containerPort: 8080,
+  });
+  assert.equal(m.get(9001).containerPort, 81);
+  assert.equal(m.get(9000).project, null);
+  assert.equal(parseDockerPs('').size, 0);
+});
+
+test('parseDockerStarted keys by short id', () => {
+  const m = parseDockerStarted('a1b2c3d4e5f6aaaaaaaa\t2026-11-19T19:19:15.29Z\nbad\tnope\n');
+  assert.equal(m.get('a1b2c3d4e5f6'), Date.parse('2026-11-19T19:19:15.29Z'));
+  assert.equal(m.size, 1);
+});
+
+test('parsePsEtime handles mm:ss, hh:mm:ss and dd-hh:mm:ss', () => {
+  const m = parsePsEtime('  14000    04:58:43\n    1 17-04:40:31\n  99    00:07\n');
+  assert.equal(m.get(14000), 4 * 3600 + 58 * 60 + 43);
+  assert.equal(m.get(1), ((17 * 24 + 4) * 60 + 40) * 60 + 31);
+  assert.equal(m.get(99), 7);
 });
