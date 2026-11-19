@@ -1,5 +1,5 @@
 #!/bin/bash
-# Install Portboard: deps, SwiftBar plugin, and print the Claude Code MCP command.
+# Install Porthole: deps, SwiftBar plugin, and print the Claude Code MCP command.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 NODE="$(command -v node)"
@@ -11,9 +11,9 @@ npm install --silent
 chmod +x src/cli.js src/mcp.js
 
 mkdir -p "$PLUGIN_DIR"
-sed -e "s#__NODE__#$NODE#" -e "s#__CLI__#$CLI#" swiftbar/portboard.5s.sh > "$PLUGIN_DIR/portboard.5s.sh"
-chmod +x "$PLUGIN_DIR/portboard.5s.sh"
-echo "✓ SwiftBar plugin installed to: $PLUGIN_DIR/portboard.5s.sh"
+sed -e "s#__NODE__#$NODE#" -e "s#__CLI__#$CLI#" swiftbar/porthole.5s.sh > "$PLUGIN_DIR/porthole.5s.sh"
+chmod +x "$PLUGIN_DIR/porthole.5s.sh"
+echo "✓ SwiftBar plugin installed to: $PLUGIN_DIR/porthole.5s.sh"
 
 if ! [ -d /Applications/SwiftBar.app ]; then
   echo "! SwiftBar not found — install it with: brew install --cask swiftbar"
@@ -22,4 +22,4 @@ open -g "swiftbar://refreshallplugins" 2>/dev/null || true
 
 echo
 echo "Register the MCP server with Claude Code (all projects):"
-echo "  claude mcp add portboard -s user -- \"$NODE\" \"$ROOT/src/mcp.js\""
+echo "  claude mcp add porthole -s user -- \"$NODE\" \"$ROOT/src/mcp.js\""

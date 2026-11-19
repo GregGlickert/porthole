@@ -1,5 +1,5 @@
 #!/bin/bash
-# <swiftbar.title>Portboard</swiftbar.title>
+# <swiftbar.title>Porthole</swiftbar.title>
 # <swiftbar.desc>Which feature is running on which localhost port.</swiftbar.desc>
 # <swiftbar.hideRunInTerminal>true</swiftbar.hideRunInTerminal>
 # <swiftbar.hideLastUpdated>true</swiftbar.hideLastUpdated>

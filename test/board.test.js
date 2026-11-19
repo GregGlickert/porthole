@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-process.env.PORTBOARD_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'portboard-test-'));
+process.env.PORTHOLE_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'porthole-test-'));
 const store = await import('../src/store.js');
 const { merge, getBoard, PRUNE_AFTER_MS } = await import('../src/board.js');
 const { render } = await import('../src/swiftbar.js');

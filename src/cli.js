@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Portboard CLI — used by you in a terminal and by the SwiftBar plugin for menu actions.
+// Porthole CLI — used by you in a terminal and by the SwiftBar plugin for menu actions.
 import { execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { getBoard, findLive, register, remove } from './board.js';
@@ -7,15 +7,15 @@ import { render, where2 } from './swiftbar.js';
 
 const CLI_PATH = fileURLToPath(import.meta.url);
 
-const HELP = `portboard — which feature is on which localhost port
+const HELP = `porthole — which feature is on which localhost port
 
-  portboard list                      show live dev servers + labels
-  portboard register <port> <title> [description]
-  portboard remove <port>             clear a label
-  portboard open <port>               open in Chrome (falls back to default browser)
-  portboard copy <port>               copy http://localhost:<port> to the clipboard
-  portboard kill <port>               SIGTERM the process listening on <port>
-  portboard swiftbar                  SwiftBar plugin output
+  porthole list                      show live dev servers + labels
+  porthole register <port> <title> [description]
+  porthole remove <port>             clear a label
+  porthole open <port>               open in Chrome (falls back to default browser)
+  porthole copy <port>               copy http://localhost:<port> to the clipboard
+  porthole kill <port>               SIGTERM the process listening on <port>
+  porthole swiftbar                  SwiftBar plugin output
 `;
 
 function die(msg) {

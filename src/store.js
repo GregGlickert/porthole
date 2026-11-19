@@ -1,11 +1,11 @@
-// Persistent label store: ~/.portboard/servers.json, keyed by port.
+// Persistent label store: ~/.porthole/servers.json, keyed by port.
 // Shared by every MCP process, the CLI, and the SwiftBar plugin, so writes are atomic.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
 export function homeDir() {
-  return process.env.PORTBOARD_HOME || path.join(os.homedir(), '.portboard');
+  return process.env.PORTHOLE_HOME || path.join(os.homedir(), '.porthole');
 }
 
 function storePath() {

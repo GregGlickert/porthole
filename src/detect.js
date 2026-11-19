@@ -2,8 +2,8 @@
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 
-export const PORT_MIN = Number(process.env.PORTBOARD_PORT_MIN || 3000);
-export const PORT_MAX = Number(process.env.PORTBOARD_PORT_MAX || 9999);
+export const PORT_MIN = Number(process.env.PORTHOLE_PORT_MIN || 3000);
+export const PORT_MAX = Number(process.env.PORTHOLE_PORT_MAX || 9999);
 
 // macOS/system processes that hold ports in the dev range but are never "your app".
 export const IGNORE_COMMANDS = new Set([

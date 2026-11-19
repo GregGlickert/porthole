@@ -1,15 +1,15 @@
 #!/usr/bin/env node
-// Portboard MCP server (stdio). Lets Claude label which feature is running on which localhost port.
+// Porthole MCP server (stdio). Lets Claude label which feature is running on which localhost port.
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import { getBoard, register, updateLabel, remove } from './board.js';
 
 const server = new McpServer(
-  { name: 'portboard', version: '0.1.0' },
+  { name: 'porthole', version: '0.1.0' },
   {
     instructions:
-      'Portboard tracks which feature/branch is running on which localhost port and shows it in the macOS menu bar. ' +
+      'Porthole tracks which feature/branch is running on which localhost port and shows it in the macOS menu bar. ' +
       'Whenever you start a local dev server (or the user says one is running), call register_server with its port and a short title ' +
       'describing the feature being tested. Use list_servers to answer "what is on port X?".',
   },

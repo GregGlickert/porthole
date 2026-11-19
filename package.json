@@ -1,10 +1,10 @@
 {
-  "name": "portboard",
+  "name": "porthole",
   "version": "0.1.0",
   "description": "Label which feature is running on which localhost port — MCP server + SwiftBar menu bar.",
   "type": "module",
   "bin": {
-    "portboard": "src/cli.js"
+    "porthole": "src/cli.js"
   },
   "scripts": {
     "test": "node --test test/*.test.js"
