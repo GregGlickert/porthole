@@ -102,8 +102,8 @@ function entryLines(e, ctx, portWidth = 4) {
   const port = portLabel(e.port, portWidth);
   const loc = where(e);
   const label = e.status === 'labeled' ? truncate(e.title, 48) : loc || 'unlabeled';
-  lines.push(`${port}  ${label} | ${action(ctx, 'open', e.port)}`);
-  lines.push(`${port}  Copy ${e.url} | ${action(ctx, 'copy', e.port)} alternate=true`);
+  // One row per port; everything else (where it runs, actions) lives in its submenu.
+  lines.push(`${port}  ${label}`);
 
   const sub =
     e.status === 'labeled'
@@ -111,7 +111,7 @@ function entryLines(e, ctx, portWidth = 4) {
       : e.status === 'stale'
         ? `unlabeled (old label: ${truncate(e.staleTitle, 30)})`
         : `unlabeled · ${e.docker ? e.docker.image || 'docker' : e.command}`;
-  lines.push(`    ${truncate(sub, 60)} | size=11 color=gray`);
+  if (sub) lines.push(`--${truncate(sub, 60)} | size=11 color=gray`);
   if (e.status === 'labeled' && e.description) {
     for (const l of wrap(e.description, 60)) lines.push(`--${l} | color=gray`);
     lines.push('-----');
