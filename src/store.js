@@ -30,6 +30,36 @@ export function save(servers) {
   fs.renameSync(tmp, storePath());
 }
 
+// ---- User config: ~/.porthole/config.json ----
+// { "ignorePorts": [8000], "ignoreCommands": ["claude-science"], "portMin": 3000, "portMax": 9999 }
+function configPath() {
+  return path.join(homeDir(), 'config.json');
+}
+
+export function loadConfig() {
+  let c = {};
+  try {
+    c = JSON.parse(fs.readFileSync(configPath(), 'utf8')) || {};
+  } catch {
+    /* missing or invalid → defaults */
+  }
+  return {
+    ignorePorts: Array.isArray(c.ignorePorts) ? c.ignorePorts.map(Number).filter(Number.isInteger) : [],
+    ignoreCommands: Array.isArray(c.ignoreCommands) ? c.ignoreCommands.map(String) : [],
+    portMin: Number.isInteger(c.portMin) ? c.portMin : undefined,
+    portMax: Number.isInteger(c.portMax) ? c.portMax : undefined,
+  };
+}
+
+export function saveConfig(config) {
+  const dir = homeDir();
+  fs.mkdirSync(dir, { recursive: true });
+  const clean = Object.fromEntries(Object.entries(config).filter(([, v]) => v !== undefined));
+  const tmp = path.join(dir, `.config.${process.pid}.${Date.now()}.tmp`);
+  fs.writeFileSync(tmp, JSON.stringify(clean, null, 2) + '\n');
+  fs.renameSync(tmp, configPath());
+}
+
 /** Read-modify-write helper. `fn` mutates (or returns) the servers object. */
 export function update(fn) {
   const servers = load();

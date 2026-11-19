@@ -67,6 +67,7 @@ function entryLines(e, ctx) {
   lines.push(`--Copy URL | ${action(ctx, 'copy', e.port)}`);
   if (!e.docker) lines.push(`--Kill server | ${action(ctx, 'kill', e.port, ' refresh=true')} sfimage=xmark.octagon`);
   if (e.status !== 'unlabeled') lines.push(`--Remove label | ${action(ctx, 'remove', e.port, ' refresh=true')}`);
+  lines.push(`--Hide this port | ${action(ctx, 'ignore', e.port, ' refresh=true')} sfimage=eye.slash`);
   return lines;
 }
 

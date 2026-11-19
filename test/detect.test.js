@@ -49,3 +49,11 @@ test('parseLsofCwd maps pid to cwd', () => {
   assert.equal(m.get(4242), '/Users/me/app');
   assert.equal(m.get(4300), '/Users/me/app-wt');
 });
+
+test('isDevCandidate honors user config ignore lists and range', () => {
+  const cfg = { ignorePorts: [8000], ignoreCommands: ['claude-science'], portMin: 3000, portMax: 4000 };
+  assert.equal(isDevCandidate({ command: 'node', port: 8000 }, cfg), false);
+  assert.equal(isDevCandidate({ command: 'claude-science', port: 3500 }, cfg), false);
+  assert.equal(isDevCandidate({ command: 'node', port: 4500 }, cfg), false);
+  assert.equal(isDevCandidate({ command: 'node', port: 3500 }, cfg), true);
+});

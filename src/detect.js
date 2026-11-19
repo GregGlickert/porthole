@@ -1,6 +1,7 @@
 // Live detection of listening dev servers via lsof, plus cwd → git branch lookup.
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
+import { loadConfig } from './store.js';
 
 export const PORT_MIN = Number(process.env.PORTHOLE_PORT_MIN || 3000);
 export const PORT_MAX = Number(process.env.PORTHOLE_PORT_MAX || 9999);
@@ -71,8 +72,18 @@ export function parseLsofCwd(text) {
   return map;
 }
 
-export function isDevCandidate({ command, port }) {
-  return port >= PORT_MIN && port <= PORT_MAX && !IGNORE_PORTS.has(port) && !IGNORE_COMMANDS.has(command);
+/** `config` is the user's ~/.porthole/config.json (see store.loadConfig); defaults apply when omitted. */
+export function isDevCandidate({ command, port }, config = {}) {
+  const min = config.portMin ?? PORT_MIN;
+  const max = config.portMax ?? PORT_MAX;
+  return (
+    port >= min &&
+    port <= max &&
+    !IGNORE_PORTS.has(port) &&
+    !IGNORE_COMMANDS.has(command) &&
+    !(config.ignorePorts || []).includes(port) &&
+    !(config.ignoreCommands || []).includes(command)
+  );
 }
 
 export function gitInfo(cwd) {
@@ -91,8 +102,10 @@ export function gitInfo(cwd) {
  * All listening dev-range ports, grouped by port.
  * @returns {Array<{port:number,pids:number[],command:string,cwd:string|null,branch:string|null,repo:string|null,docker:boolean}>}
  */
-export function scan() {
-  const raw = parseLsofListen(run('lsof', ['-nP', '-iTCP', '-sTCP:LISTEN', '-F', 'pcn'])).filter(isDevCandidate);
+export function scan(config = loadConfig()) {
+  const raw = parseLsofListen(run('lsof', ['-nP', '-iTCP', '-sTCP:LISTEN', '-F', 'pcn'])).filter((e) =>
+    isDevCandidate(e, config),
+  );
   const byPort = new Map();
   for (const e of raw) {
     const cur = byPort.get(e.port);

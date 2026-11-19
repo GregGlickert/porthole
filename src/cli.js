@@ -4,6 +4,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { getBoard, findLive, register, remove } from './board.js';
 import { render, where2 } from './swiftbar.js';
+import { loadConfig, saveConfig } from './store.js';
 
 const CLI_PATH = fileURLToPath(import.meta.url);
 
@@ -15,8 +16,24 @@ const HELP = `porthole — which feature is on which localhost port
   porthole open <port>               open in Chrome (falls back to default browser)
   porthole copy <port>               copy http://localhost:<port> to the clipboard
   porthole kill <port>               SIGTERM the process listening on <port>
+  porthole ignore <port|command>     hide a port or a process name (e.g. claude-science) from the board
+  porthole unignore <port|command>   undo ignore
+  porthole ignored                   show the ignore list (~/.porthole/config.json)
   porthole swiftbar                  SwiftBar plugin output
 `;
+
+function ignore(target, add) {
+  if (!target) die('Usage: porthole ignore <port|command>');
+  const cfg = loadConfig();
+  const isPort = /^\d+$/.test(target);
+  const key = isPort ? 'ignorePorts' : 'ignoreCommands';
+  const val = isPort ? needPort(target) : target;
+  const set = new Set(cfg[key]);
+  add ? set.add(val) : set.delete(val);
+  cfg[key] = [...set];
+  saveConfig(cfg);
+  console.log(`${add ? 'Ignoring' : 'No longer ignoring'} ${isPort ? `port ${val}` : `command "${val}"`}.`);
+}
 
 function die(msg) {
   console.error(msg);
@@ -85,6 +102,14 @@ async function main() {
       return copy(needPort(args[0]));
     case 'kill':
       return kill(needPort(args[0]));
+    case 'ignore':
+      return ignore(args[0], true);
+    case 'unignore':
+      return ignore(args[0], false);
+    case 'ignored': {
+      const c = loadConfig();
+      return console.log(`ports: ${c.ignorePorts.join(', ') || '(none)'}\ncommands: ${c.ignoreCommands.join(', ') || '(none)'}`);
+    }
     case 'help':
     case '-h':
     case '--help':

@@ -5,7 +5,7 @@ Which feature is running on which localhost port — in your macOS menu bar, lab
 ```
 ◉3
 :3001  Upload retry flow          ← click: open in Chrome · ⌥-click: copy URL
-    feat/upload · myapp ▸         ← submenu: description, cwd, PID, Open, Copy, Kill, Remove label
+    feat/upload · myapp ▸         ← submenu: description, cwd, PID, Open, Copy, Kill, Remove label, Hide
 :3002  New OAuth login
     feat/auth ▸
 :3003  fix/css                    ← gray = running but nobody labeled it yet
@@ -37,14 +37,35 @@ The plugin and MCP command pin the absolute node path. If you remove that node v
 ## CLI
 
 ```
-porthole list | register <port> <title> [desc] | remove <port> | open <port> | copy <port> | kill <port> | swiftbar
+porthole list | register <port> <title> [desc] | remove <port> | open <port> | copy <port> | kill <port> | ignore/unignore <port|command> | ignored | swiftbar
 ```
 (`node src/cli.js …`, or `npm link` to get `porthole` on your PATH.)
 
-## Config (env vars)
+## Hiding ports
 
-`PORTHOLE_HOME` (default `~/.porthole`), `PORTHOLE_PORT_MIN` / `PORTHOLE_PORT_MAX` (default 3000–9999).
+Use **Hide this port** in a port's submenu, or the CLI:
+
+```bash
+porthole ignore 8000             # hide a port
+porthole ignore claude-science   # hide every port owned by a process name
+porthole unignore 8000
+porthole ignored                 # show the list
+```
+
+These live in `~/.porthole/config.json`, which you can also edit by hand:
+
+```json
+{ "ignorePorts": [8000], "ignoreCommands": ["claude-science"], "portMin": 3000, "portMax": 9999 }
+```
+
+## Env vars
+
+`PORTHOLE_HOME` (default `~/.porthole`), `PORTHOLE_PORT_MIN` / `PORTHOLE_PORT_MAX` (default 3000–9999; `portMin`/`portMax` in config.json override these).
 
 ## Tests
 
 `npm test`
+
+## License
+
+MIT — see [LICENSE](LICENSE).
