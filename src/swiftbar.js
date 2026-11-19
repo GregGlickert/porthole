@@ -15,8 +15,9 @@ const iconParam = ICON ? `templateImage=${ICON}` : 'sfimage=circle.circle';
 const clean = (s) => String(s ?? '').replace(/\s*[|\n\r]+\s*/g, ' / ').trim();
 const q = (s) => `"${String(s).replace(/"/g, '\\"')}"`;
 
-function action({ node, cli }, verb, port, extra = '') {
-  return `bash=${q(node)} param1=${q(cli)} param2=${verb} param3=${port} terminal=false${extra}`;
+function action({ node, cli }, verb, arg, extra = '') {
+  const a3 = arg === undefined ? '' : ` param3=${q(arg)}`;
+  return `bash=${q(node)} param1=${q(cli)} param2=${verb}${a3} terminal=false${extra}`;
 }
 
 function where(e) {
@@ -91,6 +92,38 @@ export function render(entries, ctx) {
     }
   }
   out.push('---');
-  out.push('Refresh | refresh=true');
+  out.push(...settingsLines(ctx));
+  out.push(...aboutLines(ctx));
+  out.push('Refresh | refresh=true sfimage=arrow.clockwise');
   return out.join('\n') + '\n';
+}
+
+function settingsLines(ctx) {
+  const cfg = ctx.config || { ignorePorts: [], ignoreCommands: [] };
+  const lines = ['Settings | sfimage=gearshape'];
+  lines.push('--Hidden ports | size=11 color=gray');
+  if (!cfg.ignorePorts.length) lines.push('--   none | color=gray');
+  for (const p of [...cfg.ignorePorts].sort((a, b) => a - b)) {
+    lines.push(`--:${p}  — click to show again | ${action(ctx, 'unignore', p, ' refresh=true')} sfimage=eye.slash`);
+  }
+  lines.push('--Hidden processes | size=11 color=gray');
+  if (!cfg.ignoreCommands.length) lines.push('--   none | color=gray');
+  for (const c of cfg.ignoreCommands) {
+    lines.push(`--${clean(c)}  — click to show again | ${action(ctx, 'unignore', c, ' refresh=true')} sfimage=eye.slash`);
+  }
+  lines.push('-----');
+  lines.push(`--Port range: ${cfg.portMin ?? ctx.portMin}–${cfg.portMax ?? ctx.portMax} | color=gray`);
+  lines.push(`--Open config file… | ${action(ctx, 'edit', 'config')} sfimage=doc.text`);
+  lines.push(`--Open labels file… | ${action(ctx, 'edit', 'labels')} sfimage=tag`);
+  return lines;
+}
+
+function aboutLines(ctx) {
+  const lines = ['About Porthole | sfimage=info.circle'];
+  lines.push(`--Porthole ${ctx.version || ''} | color=gray`);
+  lines.push('--Which feature is running on which localhost port. | size=11 color=gray');
+  lines.push('-----');
+  if (ctx.repoUrl) lines.push(`--View on GitHub | href=${ctx.repoUrl} sfimage=link`);
+  if (ctx.root) lines.push(`--Open project folder | bash=/usr/bin/open param1=${q(ctx.root)} terminal=false sfimage=folder`);
+  return lines;
 }

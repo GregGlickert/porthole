@@ -67,9 +67,28 @@ test('render: SwiftBar output has count, actions, docker submenu, no kill for do
   const out = render(entries, { node: '/usr/bin/node', cli: '/p/cli.js' });
   const lines = out.split('\n');
   assert.match(lines[0], /^1 \| templateImage=[A-Za-z0-9+/=]+$/);
-  assert.match(out, /^:3001 {2}Upload \/ retry \| bash="\/usr\/bin\/node" param1="\/p\/cli.js" param2=open param3=3001/m);
+  assert.match(out, /^:3001 {2}Upload \/ retry \| bash="\/usr\/bin\/node" param1="\/p\/cli.js" param2=open param3="3001"/m);
   assert.match(out, /alternate=true/);
-  assert.match(out, /--Kill server .*param3=3001/);
+  assert.match(out, /--Kill server .*param3="3001"/);
   assert.match(out, /^Docker \(1\)/m);
-  assert.doesNotMatch(out, /Kill server .*param3=8080/);
+  assert.doesNotMatch(out, /Kill server .*param3="8080"/);
+});
+
+test('render: Settings lists hidden ports/processes with unignore actions; About has version + repo', () => {
+  const out = render([], {
+    node: '/n',
+    cli: '/c',
+    config: { ignorePorts: [8000], ignoreCommands: ['claude-science'] },
+    portMin: 3000,
+    portMax: 9999,
+    version: '0.1.0',
+    repoUrl: 'https://github.com/x/porthole',
+    root: '/r',
+  });
+  assert.match(out, /^Settings \| sfimage=gearshape$/m);
+  assert.match(out, /^--:8000 {2}— click to show again \| .*param2=unignore param3="8000"/m);
+  assert.match(out, /^--claude-science {2}— click to show again \| .*param3="claude-science"/m);
+  assert.match(out, /--Port range: 3000–9999/);
+  assert.match(out, /--Porthole 0\.1\.0/);
+  assert.match(out, /href=https:\/\/github\.com\/x\/porthole/);
 });

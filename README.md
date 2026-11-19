@@ -11,6 +11,8 @@ Which feature is running on which localhost port — in your macOS menu bar, lab
 :3003  fix/css                    ← gray = running but nobody labeled it yet
     unlabeled · node ▸
 Docker (4) ▸
+Settings ▸                        ← hidden ports/processes (click to unhide), port range, open config/labels file
+About Porthole ▸                  ← version, View on GitHub, open project folder
 Refresh
 ```
 
@@ -52,7 +54,7 @@ porthole unignore 8000
 porthole ignored                 # show the list
 ```
 
-These live in `~/.porthole/config.json`, which you can also edit by hand:
+Hidden items are listed under **Settings** in the menu — click one to show it again. They live in `~/.porthole/config.json` (**Settings → Open config file…**, or `porthole edit`):
 
 ```json
 { "ignorePorts": [8000], "ignoreCommands": ["claude-science"], "portMin": 3000, "portMax": 9999 }

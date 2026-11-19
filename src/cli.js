@@ -4,9 +4,25 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { getBoard, findLive, register, remove } from './board.js';
 import { render, where2 } from './swiftbar.js';
-import { loadConfig, saveConfig } from './store.js';
+import fs from 'node:fs';
+import path from 'node:path';
+import { loadConfig, saveConfig, homeDir } from './store.js';
+import { PORT_MIN, PORT_MAX } from './detect.js';
 
 const CLI_PATH = fileURLToPath(import.meta.url);
+const ROOT = path.dirname(path.dirname(CLI_PATH));
+const PKG = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+const REPO_URL = (PKG.repository?.url || PKG.repository || '').replace(/^git\+/, '').replace(/\.git$/, '') || undefined;
+
+/** Open ~/.porthole/config.json or servers.json in the default text editor, creating it if missing. */
+function edit(which) {
+  const file = path.join(homeDir(), which === 'labels' ? 'servers.json' : 'config.json');
+  if (!fs.existsSync(file)) {
+    if (which === 'labels') fs.mkdirSync(homeDir(), { recursive: true }), fs.writeFileSync(file, '{ "version": 1, "servers": {} }\n');
+    else saveConfig({ ignorePorts: [], ignoreCommands: [], portMin: PORT_MIN, portMax: PORT_MAX });
+  }
+  spawnSync('/usr/bin/open', ['-t', file]);
+}
 
 const HELP = `porthole — which feature is on which localhost port
 
@@ -19,6 +35,7 @@ const HELP = `porthole — which feature is on which localhost port
   porthole ignore <port|command>     hide a port or a process name (e.g. claude-science) from the board
   porthole unignore <port|command>   undo ignore
   porthole ignored                   show the ignore list (~/.porthole/config.json)
+  porthole edit [config|labels]      open ~/.porthole/config.json or servers.json in your editor
   porthole swiftbar                  SwiftBar plugin output
 `;
 
@@ -88,7 +105,18 @@ async function main() {
     case undefined:
       return list();
     case 'swiftbar':
-      return process.stdout.write(render(getBoard(), { node: process.execPath, cli: CLI_PATH }));
+      return process.stdout.write(
+        render(getBoard(), {
+          node: process.execPath,
+          cli: CLI_PATH,
+          config: loadConfig(),
+          portMin: PORT_MIN,
+          portMax: PORT_MAX,
+          version: PKG.version,
+          repoUrl: REPO_URL,
+          root: ROOT,
+        }),
+      );
     case 'register': {
       const [p, title, ...desc] = args;
       const rec = await register({ port: needPort(p), title, description: desc.join(' ') || undefined, waitMs: 3000 });
@@ -110,6 +138,8 @@ async function main() {
       const c = loadConfig();
       return console.log(`ports: ${c.ignorePorts.join(', ') || '(none)'}\ncommands: ${c.ignoreCommands.join(', ') || '(none)'}`);
     }
+    case 'edit':
+      return edit(args[0] === 'labels' ? 'labels' : 'config');
     case 'help':
     case '-h':
     case '--help':
