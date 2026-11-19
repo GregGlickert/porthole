@@ -6,8 +6,8 @@ import path from 'node:path';
 
 process.env.PORTHOLE_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'porthole-test-'));
 const store = await import('../src/store.js');
-const { merge, getBoard, PRUNE_AFTER_MS } = await import('../src/board.js');
-const { render } = await import('../src/swiftbar.js');
+const { merge, getBoard, freePorts, updateLabel, PRUNE_AFTER_MS } = await import('../src/board.js');
+const { render, humanAge, wrap, describeLive } = await import('../src/swiftbar.js');
 
 const live = (port, cwd, extra = {}) => ({
   port,
@@ -59,19 +59,23 @@ test('getBoard prunes labels not seen for 24h, keeps recent ones', () => {
   assert.deepEqual(Object.keys(store.load()), ['3002']);
 });
 
-test('render: SwiftBar output has count, actions, docker submenu, no kill for docker', () => {
+test('render: SwiftBar output has count, actions, docker ports in main list, no kill for docker', () => {
   const { entries } = merge(
     [live(3001, '/a'), live(8080, null, { docker: true, command: 'com.docker.backend' })],
     { 3001: { port: 3001, title: 'Upload | retry', description: 'Adds backoff', cwd: '/a', registeredAt: 'x' } },
   );
   const out = render(entries, { node: '/usr/bin/node', cli: '/p/cli.js' });
   const lines = out.split('\n');
-  assert.match(lines[0], /^1 \| templateImage=[A-Za-z0-9+/=]+$/);
+  assert.match(lines[0], /^2 \| templateImage=[A-Za-z0-9+/=]+$/);
   assert.match(out, /^:3001 {2}Upload \/ retry \| bash="\/usr\/bin\/node" param1="\/p\/cli.js" param2=open param3="3001"/m);
   assert.match(out, /alternate=true/);
-  assert.match(out, /--Kill server .*param3="3001"/);
-  assert.match(out, /^Docker \(1\)/m);
-  assert.doesNotMatch(out, /Kill server .*param3="8080"/);
+  assert.match(out, /--Kill server… .*param2=confirm-kill param3="3001"/);
+  assert.doesNotMatch(out, /^Docker \(/m);
+  assert.match(out, /^:8080 {2}docker \|/m);
+  assert.match(out, /--Label this port… .*param3="8080"/);
+  assert.doesNotMatch(out, /Kill server.*param3="8080"/);
+  // No container identified (docker ps unavailable) → no stop action either.
+  assert.doesNotMatch(out, /Stop container.*param3="8080"/);
 });
 
 test('render: Settings lists hidden ports/processes with unignore actions; About has version + repo', () => {
@@ -91,4 +95,94 @@ test('render: Settings lists hidden ports/processes with unignore actions; About
   assert.match(out, /--Port range: 3000–9999/);
   assert.match(out, /--Porthole 0\.1\.0/);
   assert.match(out, /href=https:\/\/github\.com\/x\/porthole/);
+});
+
+const ctx = { node: '/n', cli: '/c' };
+const balanceApi = { container: 'balance-api-1', image: 'balance-api', project: 'balance', service: 'api', containerPort: 8080 };
+
+test('merge passes docker info and uptime through', () => {
+  const { entries } = merge([live(8080, null, { docker: balanceApi, command: 'com.docker.backend', repo: 'balance', uptimeSec: 60 })], {});
+  assert.deepEqual(entries[0].docker, balanceApi);
+  assert.equal(entries[0].uptimeSec, 60);
+});
+
+test('render: docker entries show container names instead of backend PID', () => {
+  const { entries } = merge(
+    [
+      live(8080, null, { docker: balanceApi, command: 'com.docker.backend', uptimeSec: 3600 }),
+      live(3000, null, { docker: { ...balanceApi, container: 'balance-frontend-1', service: 'frontend', containerPort: 3000 }, command: 'com.docker.backend' }),
+    ],
+    { 8080: { port: 8080, title: 'Main API', cwd: null, registeredAt: new Date(Date.now() - 40 * 60e3).toISOString() } },
+  );
+  const out = render(entries, ctx);
+  assert.match(out, /^ {4}balance · api \| size=11/m);
+  assert.match(out, /--container balance-api-1 · image balance-api/);
+  assert.match(out, /--up 1h · labeled 40m ago/);
+  assert.doesNotMatch(out, /com\.docker\.backend/);
+  assert.match(out, /^:3000 {2}balance · frontend \|/m);
+  assert.match(out, /--Label this port… .*param3="3000"/);
+  // Docker ports get "Stop container…" (docker stop) instead of killing Docker's PID.
+  assert.match(out, /--Stop container… .*param2=confirm-kill param3="3000".*sfimage=stop\.circle/);
+  assert.doesNotMatch(out, /Kill server/);
+});
+
+test('render: label/rename items, cwd "/" hidden, kill last, icons on every action', () => {
+  const { entries } = merge([live(3001, '/a'), live(8000, '/', { command: 'claude-science' })], {
+    3001: { port: 3001, title: 'A', cwd: '/a', registeredAt: new Date().toISOString() },
+  });
+  const out = render(entries, ctx);
+  assert.match(out, /--Rename… \| .*param2=prompt-label param3="3001"/);
+  assert.match(out, /--Label this port… \| .*param2=prompt-label param3="8000"/);
+  assert.doesNotMatch(out, /^--\/ \|/m);
+  assert.doesNotMatch(out, /^:8000.*color=gray/m); // unlabeled title row is not grayed out
+  const actions = out.split('\n').filter((l) => /^--.*\bbash=/.test(l));
+  for (const l of actions) assert.match(l, /sfimage=/, l);
+  // Kill is the last item of each port submenu.
+  const sub3001 = out.split('\n:8000')[0].split('\n');
+  assert.match(sub3001[sub3001.length - 1], /Kill server…/);
+  assert.equal(sub3001[sub3001.length - 2], '-----');
+});
+
+test('render: Settings collapses to "Nothing hidden"', () => {
+  const out = render([], { ...ctx, config: { ignorePorts: [], ignoreCommands: [] } });
+  assert.match(out, /^--Nothing hidden/m);
+  assert.doesNotMatch(out, /Hidden ports|none/);
+});
+
+test('humanAge', () => {
+  assert.equal(humanAge(30), '1m');
+  assert.equal(humanAge(3600), '1h');
+  assert.equal(humanAge(17640), '4h 54m');
+  assert.equal(humanAge(200000), '2d 7h');
+  assert.equal(humanAge(null), null);
+});
+
+test('wrap: no one-word last line, sentences kept together', () => {
+  const lines = wrap("Docker frontend from the main checkout (test/print-blank-fix). Test that printed reports aren't blank.", 60);
+  assert.ok(lines.every((l) => l.length <= 60 || !l.includes(' ')));
+  assert.ok(lines[lines.length - 1].includes(' '));
+  assert.deepEqual(wrap('Short one. Another.', 60), ['Short one. Another.']);
+  assert.deepEqual(wrap('aaaa bbbb cccc dddd eeee ffff gggg hhhh iiii jjjj kkkk llll x', 60).length, 1);
+});
+
+test('freePorts skips listening, labeled and DB ports; starts at preferred and wraps', () => {
+  assert.deepEqual(freePorts(new Set([3000, 3001]), { 3002: {} }, { min: 3000, max: 3010, count: 2 }), [3003, 3004]);
+  assert.deepEqual(freePorts(new Set(), {}, { min: 3000, max: 3010, preferred: 3009, count: 3 }), [3009, 3010, 3000]);
+  assert.deepEqual(freePorts(new Set(), {}, { min: 5431, max: 5433, count: 3 }), [5431, 5433]);
+  assert.deepEqual(freePorts(new Set(), {}, { min: 3000, max: 3010, preferred: 80 }), [3000]);
+});
+
+test('describeLive: readable names for dialogs', () => {
+  assert.equal(describeLive(live(3000, null, { docker: balanceApi })), 'balance · api (container balance-api-1)');
+  assert.equal(describeLive(live(3001, '/x/myapp', { repo: 'myapp' })), 'feat/x · myapp (node)');
+  assert.equal(describeLive(live(8000, '/', { branch: null, repo: null, command: 'claude-science' })), 'claude-science');
+  assert.equal(describeLive(live(8081, null, { docker: {} })), 'Docker');
+});
+
+test('updateLabel rejects blank titles and empty updates, keeps the label', () => {
+  store.save({ 4910: { port: 4910, title: 'Keep me', registeredAt: 'x' } });
+  assert.throws(() => updateLabel({ port: 4910, title: '   ' }), /title cannot be empty/);
+  assert.throws(() => updateLabel({ port: 4910 }), /Nothing to update/);
+  assert.equal(store.load()['4910'].title, 'Keep me');
+  assert.equal(updateLabel({ port: 4910, description: 'd' }).title, 'Keep me');
 });

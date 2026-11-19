@@ -5,22 +5,22 @@ Which feature is running on which localhost port — in your macOS menu bar, lab
 ```
 ◉3
 :3001  Upload retry flow          ← click: open in Chrome · ⌥-click: copy URL
-    feat/upload · myapp ▸         ← submenu: description, cwd, PID, Open, Copy, Kill, Remove label, Hide
-:3002  New OAuth login
-    feat/auth ▸
-:3003  fix/css                    ← gray = running but nobody labeled it yet
-    unlabeled · node ▸
-Docker (4) ▸
+    feat/upload · myapp ▸         ← submenu: description, uptime + label age, cwd, PID,
+                                     Open, Copy, Rename…, Remove label, Hide, Kill server… / Stop container… (asks first)
+:3003  fix/css                    ← running but nobody labeled it yet
+    unlabeled · node ▸            ← submenu has "Label this port…" (native text prompt)
+:8080  Main API
+    balance · api ▸               ← Docker ports show compose project · service, container and image
 Settings ▸                        ← hidden ports/processes (click to unhide), port range, open config/labels file
 About Porthole ▸                  ← version, View on GitHub, open project folder
 Refresh
 ```
 
-- **MCP server** (`src/mcp.js`) — Claude calls `register_server(port, title, description?)` after starting a dev server. Branch and folder are detected automatically. Also `update_server`, `remove_server`, `list_servers`.
+- **MCP server** (`src/mcp.js`) — Claude calls `register_server(port, title, description?)` after starting a dev server. Branch and folder are detected automatically. Also `update_server`, `remove_server`, `list_servers` (optional `port` filter; includes uptime and Docker container info), and `suggest_free_port(preferred?, count?)`, which returns ports nothing is listening on and no label claims.
 - **SwiftBar plugin** — refreshes every 5s. Shows every listening port in 3000–9999 (system processes and DB ports filtered), with git branch, even if unregistered.
 - **No daemon** — labels live in `~/.porthole/servers.json`; live state comes from `lsof` each refresh.
 - **Stale labels** — if a different checkout starts listening on a labeled port, the old label is ignored (shown as "old label: …"). Labels for ports that stay dead 24h are pruned.
-- **Docker-published ports** go in a separate submenu and can't be killed from the menu (that would kill Docker).
+- **Docker-published ports** are listed like any other port, named by compose project · service with the container and image in the submenu. Instead of Kill they get **Stop container…**, which runs `docker stop <container>` for just that container (killing the listening PID would take down all of Docker). Use **Hide this port** for ones you don't care about.
 
 ## Install
 
@@ -39,7 +39,8 @@ The plugin and MCP command pin the absolute node path. If you remove that node v
 ## CLI
 
 ```
-porthole list | register <port> <title> [desc] | remove <port> | open <port> | copy <port> | kill <port> | ignore/unignore <port|command> | ignored | swiftbar
+porthole list | register <port> <title> [desc] | remove <port> | open <port> | copy <port> | kill <port>
+         | confirm-kill <port> | prompt-label <port> | ignore/unignore <port|command> | ignored | edit | swiftbar
 ```
 (`node src/cli.js …`, or `npm link` to get `porthole` on your PATH.)
 

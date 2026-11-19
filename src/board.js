@@ -1,6 +1,7 @@
 // Merge live scan results with stored labels. Pure core + thin I/O wrappers.
 import * as store from './store.js';
-import { scan } from './detect.js';
+import { scan, listeningPorts, IGNORE_PORTS, PORT_MIN, PORT_MAX } from './detect.js';
+import { loadConfig } from './store.js';
 
 export const PRUNE_AFTER_MS = 24 * 60 * 60 * 1000;
 const SEEN_WRITE_INTERVAL_MS = 60 * 1000;
@@ -37,6 +38,7 @@ export function merge(live, servers, now = Date.now()) {
       command: l.command,
       pids: l.pids,
       docker: l.docker,
+      uptimeSec: l.uptimeSec ?? null,
     });
   }
 
@@ -65,6 +67,33 @@ export function getBoard({ live = scan(), now = Date.now() } = {}) {
     }
   }
   return entries;
+}
+
+/**
+ * Pure: first `count` ports in [min, max] that nothing listens on and no label claims,
+ * starting at `preferred` (if in range) and wrapping around.
+ */
+export function freePorts(listening, servers, { min, max, preferred, count = 1 }) {
+  const taken = new Set([...listening].map(Number));
+  for (const k of Object.keys(servers)) taken.add(Number(k));
+  const start = Number.isInteger(preferred) && preferred >= min && preferred <= max ? preferred : min;
+  const out = [];
+  const span = max - min + 1;
+  for (let i = 0; i < span && out.length < count; i++) {
+    const p = min + ((start - min + i) % span);
+    if (!taken.has(p) && !IGNORE_PORTS.has(p)) out.push(p);
+  }
+  return out;
+}
+
+export function suggestFreePorts({ preferred, count = 1 } = {}) {
+  const cfg = loadConfig();
+  return freePorts(listeningPorts(), store.load(), {
+    min: cfg.portMin ?? PORT_MIN,
+    max: cfg.portMax ?? PORT_MAX,
+    preferred,
+    count,
+  });
 }
 
 export function findLive(port, live = scan()) {
@@ -108,6 +137,8 @@ export async function register({ port, title, description, waitMs = 10000 }) {
 
 export function updateLabel({ port, title, description }) {
   const key = String(Number(port));
+  if (title == null && description == null) throw new Error('Nothing to update: pass title and/or description.');
+  if (title != null && !String(title).trim()) throw new Error('title cannot be empty (use remove_server to clear a label).');
   let rec;
   store.update((s) => {
     if (!s[key]) throw new Error(`Port ${key} is not registered. Use register_server first.`);
