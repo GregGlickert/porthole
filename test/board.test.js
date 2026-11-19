@@ -7,7 +7,7 @@ import path from 'node:path';
 process.env.PORTHOLE_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'porthole-test-'));
 const store = await import('../src/store.js');
 const { merge, getBoard, freePorts, updateLabel, PRUNE_AFTER_MS } = await import('../src/board.js');
-const { render, humanAge, wrap, describeLive } = await import('../src/swiftbar.js');
+const { render, portLabel, humanAge, wrap, describeLive } = await import('../src/swiftbar.js');
 
 const live = (port, cwd, extra = {}) => ({
   port,
@@ -68,12 +68,12 @@ test('render: SwiftBar output has count, actions, docker ports in main list, no 
   const lines = out.split('\n');
   assert.match(lines[0], /^2 \| templateImage=[A-Za-z0-9+/=]+$/);
   // One row per port: the title alone, with location and actions in its submenu.
-  assert.match(out, /^:3001 {2}Upload \/ retry$/m);
+  assert.match(out, /^:3001[\u2009\u2006\u200A]* {2}Upload \/ retry$/m);
   assert.match(out, /^--Open http:\/\/localhost:3001 \| bash="\/usr\/bin\/node" param1="\/p\/cli.js" param2=open param3="3001"/m);
   assert.doesNotMatch(out, /^ {4}\S/m);
   assert.match(out, /--Kill server… .*param2=confirm-kill param3="3001"/);
   assert.doesNotMatch(out, /^Docker \(/m);
-  assert.match(out, /^:8080 {2}docker$/m);
+  assert.match(out, /^:8080[\u2009\u2006\u200A]* {2}docker$/m);
   assert.match(out, /--Label this port… .*param3="8080"/);
   assert.doesNotMatch(out, /Kill server.*param3="8080"/);
   // No container identified (docker ps unavailable) → no stop action either.
@@ -121,7 +121,7 @@ test('render: docker entries show container names instead of backend PID', () =>
   assert.match(out, /--container balance-api-1 · image balance-api/);
   assert.match(out, /--up 1h · labeled 40m ago/);
   assert.doesNotMatch(out, /com\.docker\.backend/);
-  assert.match(out, /^:3000 {2}balance · frontend$/m);
+  assert.match(out, /^:3000[\u2009\u2006\u200A]* {2}balance · frontend$/m);
   assert.match(out, /--Label this port… .*param3="3000"/);
   // Docker ports get "Stop container…" (docker stop) instead of killing Docker's PID.
   assert.match(out, /--Stop container… .*param2=confirm-kill param3="3000".*sfimage=stop\.circle/);
@@ -187,4 +187,15 @@ test('updateLabel rejects blank titles and empty updates, keeps the label', () =
   assert.throws(() => updateLabel({ port: 4910 }), /Nothing to update/);
   assert.equal(store.load()['4910'].title, 'Keep me');
   assert.equal(updateLabel({ port: 4910, description: 'd' }).title, 'Keep me');
+});
+
+test('portLabel pads ports to one column width in the menu font', () => {
+  const EM = { 0: 0.624, 1: 0.458, 2: 0.598, 3: 0.621, 4: 0.638, 5: 0.612, 6: 0.631, 7: 0.563, 8: 0.633, 9: 0.631, ':': 0.291, '\u2009': 0.135, '\u2006': 0.16, '\u200A': 0.064 };
+  const width = (s) => [...s].reduce((w, c) => w + EM[c], 0);
+  const widths = [3000, 3001, 1111, 8081, 4444, 7777].map((p) => width(portLabel(p)));
+  // Within ~0.3pt of each other at 13pt.
+  assert.ok(Math.max(...widths) - Math.min(...widths) <= 0.025, widths.join(' '));
+  // 5-digit ports still line up with padded 4-digit ones when the column is 5 wide.
+  assert.ok(Math.abs(width(portLabel(5173, 5)) - width(portLabel(11434, 5))) <= 0.025);
+  assert.match(portLabel(3000), /^:3000[\u2009\u2006\u200A]*$/);
 });
