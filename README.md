@@ -3,7 +3,7 @@
 Which feature is running on which localhost port — in your macOS menu bar, labeled by Claude.
 
 ```
-⚡3
+◉3
 :3001  Upload retry flow          ← click: open in Chrome · ⌥-click: copy URL
     feat/upload · myapp ▸         ← submenu: description, cwd, PID, Open, Copy, Kill, Remove label
 :3002  New OAuth login

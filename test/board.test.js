@@ -66,7 +66,7 @@ test('render: SwiftBar output has count, actions, docker submenu, no kill for do
   );
   const out = render(entries, { node: '/usr/bin/node', cli: '/p/cli.js' });
   const lines = out.split('\n');
-  assert.equal(lines[0], '⚡1');
+  assert.match(lines[0], /^1 \| templateImage=[A-Za-z0-9+/=]+$/);
   assert.match(out, /^:3001 {2}Upload \/ retry \| bash="\/usr\/bin\/node" param1="\/p\/cli.js" param2=open param3=3001/m);
   assert.match(out, /alternate=true/);
   assert.match(out, /--Kill server .*param3=3001/);

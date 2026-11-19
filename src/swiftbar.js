@@ -1,6 +1,17 @@
 // Render the board as SwiftBar plugin output. Pure: (entries, {node, cli}) -> string.
 // Format reference: https://github.com/swiftbar/SwiftBar#plugin-api
 
+import fs from 'node:fs';
+
+// Menu bar icon (template image: macOS tints it for light/dark). Regenerate with scripts/make-icon.swift.
+let ICON = '';
+try {
+  ICON = fs.readFileSync(new URL('../assets/porthole-icon.png', import.meta.url)).toString('base64');
+} catch {
+  /* fall back to an SF Symbol */
+}
+const iconParam = ICON ? `templateImage=${ICON}` : 'sfimage=circle.circle';
+
 const clean = (s) => String(s ?? '').replace(/\s*[|\n\r]+\s*/g, ' / ').trim();
 const q = (s) => `"${String(s).replace(/"/g, '\\"')}"`;
 
@@ -65,7 +76,7 @@ export function render(entries, ctx) {
   const docker = entries.filter((e) => e.docker && e.status !== 'labeled');
 
   const out = [];
-  out.push(main.length ? `⚡${main.length}` : '⚡ | color=gray');
+  out.push(main.length ? `${main.length} | ${iconParam}` : ` | ${iconParam}`);
   out.push('---');
   if (!main.length) out.push('No dev servers running | color=gray');
   for (const e of main) out.push(...entryLines(e, ctx));
