@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Porthole MCP server (stdio). Lets Claude label which feature is running on which localhost port.
+// Porthole MCP server (stdio). Lets any MCP-capable coding agent label which feature is running on which localhost port.
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
