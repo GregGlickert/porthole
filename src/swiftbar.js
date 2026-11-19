@@ -94,8 +94,44 @@ export function wrap(text, width = 60) {
   return lines;
 }
 
-// U+2007 FIGURE SPACE has the width of a digit, so ":3000" and ":51234" line up.
-const portLabel = (port, width) => `:${port}`.padEnd(width + 1, '\u2007');
+// Fixed-width port column in the normal menu font. The system font's digits are proportional
+// (":3001" is ~2pt narrower than ":3000"), and SwiftBar can't select its monospaced-digit variant
+// (`font=` only takes names) and its tab stops are a fixed 100pt apart (too wide). So we pad each
+// port with thin/hair spaces up to the width of the widest number with that many digits.
+// Advance widths of the macOS menu font (SF, 13pt) in ems; kerning between these is negligible.
+const EM = {
+  0: 0.624, 1: 0.458, 2: 0.598, 3: 0.621, 4: 0.638, 5: 0.612, 6: 0.631, 7: 0.563, 8: 0.633, 9: 0.631,
+  ':': 0.291,
+};
+// Spaces narrower than a regular space, in ems; mixing them gets the padding within ~0.1pt.
+const SPACES = [
+  { ch: '\u2009', em: 0.135 }, // thin space
+  { ch: '\u2006', em: 0.16 }, // six-per-em space
+  { ch: '\u200A', em: 0.064 }, // hair space
+];
+const WIDEST_DIGIT = Math.max(...Object.values(EM).slice(0, 10));
+
+/** Fewest-error mix of thin/six-per-em/hair spaces that adds up to `gap` ems. */
+function padding(gap) {
+  const [thin, six, hair] = SPACES;
+  let best = { err: Infinity, str: '' };
+  for (let t = 0; t * thin.em <= gap + hair.em; t++) {
+    for (let s = 0; s <= 3; s++) {
+      for (let h = 0; h <= 3; h++) {
+        const err = Math.abs(gap - (t * thin.em + s * six.em + h * hair.em));
+        if (err < best.err - 1e-9) best = { err, str: thin.ch.repeat(t) + six.ch.repeat(s) + hair.ch.repeat(h) };
+      }
+    }
+  }
+  return best.str;
+}
+
+export function portLabel(port, digits = 4) {
+  const text = `:${port}`;
+  const width = [...text].reduce((w, c) => w + (EM[c] ?? WIDEST_DIGIT), 0);
+  const gap = Math.max(0, EM[':'] + Math.max(digits, String(port).length) * WIDEST_DIGIT - width);
+  return text + padding(gap);
+}
 
 function entryLines(e, ctx, portWidth = 4) {
   const lines = [];
@@ -151,12 +187,12 @@ function entryLines(e, ctx, portWidth = 4) {
 export function render(entries, ctx) {
   // Docker-published ports are listed like any other port (named by compose project · service).
   const main = entries;
-  const portWidth = Math.max(4, ...main.map((e) => String(e.port).length));
 
   const out = [];
   out.push(main.length ? `${main.length} | ${iconParam}` : ` | ${iconParam}`);
   out.push('---');
   if (!main.length) out.push('No dev servers running | color=gray');
+  const portWidth = Math.max(4, ...main.map((e) => String(e.port).length));
   for (const e of main) out.push(...entryLines(e, ctx, portWidth));
 
   out.push('---');
