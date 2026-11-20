@@ -4,7 +4,7 @@ Which feature is running on which localhost port — in your macOS menu bar, lab
 
 ```
 ◉3
-:3001  Upload retry flow ▸        ← one row per port; submenu: branch · repo, description, uptime + label age,
+:3001  Upload retry flow ▸        ← one row per port; click opens it in Chrome, hover for the submenu: branch · repo, description, uptime + label age,
                                      cwd/PID, Open, Copy URL, Rename…, Remove label, Hide, Kill server… (asks first)
 :3003  fix/css · myapp ▸          ← running but nobody labeled it yet; submenu has "Label this port…"
 :8080  Main API ▸                 ← Docker ports: submenu shows compose project · service, container and image,
@@ -14,9 +14,10 @@ About Porthole ▸                  ← version, View on GitHub, open project fo
 Refresh
 ```
 
-- **MCP server** (`src/mcp.js`) — your agent calls `register_server(port, title, description?)` after starting a dev server. Branch and folder are detected automatically. Also `update_server`, `remove_server`, `list_servers` (optional `port` filter; includes uptime and Docker container info), and `suggest_free_port(preferred?, count?)`, which returns ports nothing is listening on and no label claims.
-- **SwiftBar plugin** — refreshes every 60s, and immediately whenever an agent registers, updates or removes a label. Shows every listening port in 3000–9999 (system processes and DB ports filtered), with git branch, even if unregistered.
-- **No daemon** — labels live in `~/.porthole/servers.json`; live state comes from `lsof` each refresh.
+- **MCP server** (`src/mcp.js`) — your agent calls `register_server(port, title, description?)` after starting a dev server. Branch and folder are detected automatically. Also `update_server`, `remove_server`, `list_servers` (optional `port` filter; includes uptime, checkout folder and Docker container info), and `suggest_free_port(preferred?, count?)`, which returns ports nothing is listening on and no label claims, and reserves them for 2 minutes so a parallel agent isn't handed the same port.
+- **SwiftBar plugin** — a live menu: one background process checks listening ports every 5s with `netstat` (cheap) and only rescans when that list changes, so a server appears or disappears within ~5s. Label and setting changes show immediately. Shows every listening port in 3000–9999 (system processes and DB ports filtered), with git branch, even if unregistered.
+- **Open in editor / terminal / Finder** from a port's submenu, at the checkout's git root (or the compose project folder for Docker).
+- **No daemon to manage** — labels live in `~/.porthole/servers.json`; the menu's one background process is started and stopped by SwiftBar.
 - **Stale labels** — if a different checkout starts listening on a labeled port, the old label is ignored (shown as "old label: …"). Labels for ports that stay dead 24h are pruned.
 - **Docker-published ports** are listed like any other port, named by compose project · service with the container and image in the submenu. Instead of Kill they get **Stop container…**, which runs `docker stop <container>` for just that container (killing the listening PID would take down all of Docker). Use **Hide this port** for ones you don't care about.
 
@@ -93,6 +94,8 @@ Hidden items are listed under **Settings** in the menu — click one to show it 
 ```json
 { "ignorePorts": [8000], "ignoreCommands": ["claude-science"], "portMin": 3000, "portMax": 9999 }
 ```
+
+"Open in …" uses the first editor found (Cursor, Visual Studio Code, Zed, Windsurf, Sublime Text) and terminal (Ghostty, iTerm, Warp, Terminal). Override with `"editor": "Zed"` or `"terminal": "iTerm"` in the same file.
 
 ## Env vars
 

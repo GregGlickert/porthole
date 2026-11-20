@@ -9,6 +9,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { loadConfig, saveConfig, homeDir } from './store.js';
 import { PORT_MIN, PORT_MAX } from './detect.js';
+import { pickApps, openIn } from './apps.js';
 
 const CLI_PATH = fileURLToPath(import.meta.url);
 const ROOT = path.dirname(path.dirname(CLI_PATH));
@@ -38,8 +39,11 @@ const HELP = `porthole — which feature is on which localhost port
   porthole ignore <port|command>     hide a port or a process name (e.g. claude-science) from the board
   porthole unignore <port|command>   undo ignore
   porthole ignored                   show the ignore list (~/.porthole/config.json)
+  porthole open-editor <port> [dir]  open the server's checkout in your editor (config: "editor")
+  porthole open-terminal <port> [dir] open a terminal in the server's checkout (config: "terminal")
   porthole edit [config|labels]      open ~/.porthole/config.json or servers.json in your editor
-  porthole swiftbar                  SwiftBar plugin output
+  porthole swiftbar                  SwiftBar plugin output (one shot)
+  porthole stream                    SwiftBar streamable plugin: live menu, re-rendered on change
 `;
 
 function ignore(target, add) {
@@ -81,6 +85,36 @@ function open(port) {
   const url = `http://localhost:${port}`;
   const r = spawnSync('/usr/bin/open', ['-a', 'Google Chrome', url]);
   if (r.status !== 0) spawnSync('/usr/bin/open', [url]);
+}
+
+/** Folder for "Open in …": the git checkout root (or compose project dir for Docker). */
+function openFolder(port, kind, dir) {
+  // The menu passes the folder it already knows, so a click doesn't rerun the full scan.
+  if (!dir) {
+    const l = findLive(port);
+    if (!l) die(`Nothing listening on ${port}.`);
+    if (!l.root) die(`No folder known for :${port}.`);
+    dir = l.root;
+  }
+  const app = pickApps(loadConfig())[kind];
+  if (!app) die(`No ${kind} found. Set "${kind}" in ~/.porthole/config.json, e.g. "${kind === 'editor' ? 'Visual Studio Code' : 'Terminal'}".`);
+  openIn(app, dir);
+}
+
+/** ctx for render(): paths for menu actions, settings, and which apps "Open in …" uses. */
+function renderCtx() {
+  const config = loadConfig();
+  return {
+    node: process.execPath,
+    cli: CLI_PATH,
+    config,
+    portMin: PORT_MIN,
+    portMax: PORT_MAX,
+    version: PKG.version,
+    repoUrl: REPO_URL,
+    root: ROOT,
+    ...pickApps(config),
+  };
 }
 
 function copy(port) {
@@ -183,18 +217,15 @@ async function main() {
     case undefined:
       return list();
     case 'swiftbar':
-      return process.stdout.write(
-        render(getBoard(), {
-          node: process.execPath,
-          cli: CLI_PATH,
-          config: loadConfig(),
-          portMin: PORT_MIN,
-          portMax: PORT_MAX,
-          version: PKG.version,
-          repoUrl: REPO_URL,
-          root: ROOT,
-        }),
-      );
+      return process.stdout.write(render(getBoard(), renderCtx()));
+    case 'stream': {
+      const { runStream } = await import('./stream.js');
+      return runStream({ renderCtx });
+    }
+    case 'open-editor':
+      return openFolder(needPort(args[0]), 'editor', args[1]);
+    case 'open-terminal':
+      return openFolder(needPort(args[0]), 'terminal', args[1]);
     case 'register': {
       const [p, title, ...desc] = args;
       const rec = await register({ port: needPort(p), title, description: desc.join(' ') || undefined, waitMs: 3000 });
