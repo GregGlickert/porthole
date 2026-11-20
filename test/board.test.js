@@ -68,12 +68,12 @@ test('render: SwiftBar output has count, actions, docker ports in main list, no 
   const lines = out.split('\n');
   assert.match(lines[0], /^2 \| templateImage=[A-Za-z0-9+/=]+$/);
   // One row per port: the title alone, with location and actions in its submenu.
-  assert.match(out, /^:3001[\u2009\u2006\u200A]* {2}Upload \/ retry \| bash="\/usr\/bin\/node" param1="\/p\/cli\.js" param2=open param3="3001" terminal=false$/m);
-  assert.match(out, /^--Open http:\/\/localhost:3001 \| bash="\/usr\/bin\/node" param1="\/p\/cli.js" param2=open param3="3001"/m);
+  assert.match(out, /^:3001[\u2009\u2006\u200A]* {2}Upload \/ retry \| bash="\/usr\/bin\/open" param1="http:\/\/localhost:3001" terminal=false$/m);
+  assert.match(out, /^--Open http:\/\/localhost:3001 \| bash="\/usr\/bin\/open" param1="http:\/\/localhost:3001" terminal=false/m);
   assert.doesNotMatch(out, /^ {4}\S/m);
-  assert.match(out, /--Kill server… .*param2=confirm-kill param3="3001"/);
+  assert.match(out, /--Kill server… .*param2="confirm-kill" param3="3001" param4="4001" param5="feat\/x \(node\)" terminal=false/);
   assert.doesNotMatch(out, /^Docker \(/m);
-  assert.match(out, /^:8080[\u2009\u2006\u200A]* {2}docker \| .*param2=open param3="8080"/m);
+  assert.match(out, /^:8080[\u2009\u2006\u200A]* {2}docker \| .*param1="http:\/\/localhost:8080"/m);
   assert.match(out, /--Label this port… .*param3="8080"/);
   assert.doesNotMatch(out, /Kill server.*param3="8080"/);
   // No container identified (docker ps unavailable) → no stop action either.
@@ -92,7 +92,7 @@ test('render: Settings lists hidden ports/processes with unignore actions; About
     root: '/r',
   });
   assert.match(out, /^Settings \| sfimage=gearshape$/m);
-  assert.match(out, /^--:8000 {2}— click to show again \| .*param2=unignore param3="8000"/m);
+  assert.match(out, /^--:8000 {2}— click to show again \| .*param2="unignore" param3="8000"/m);
   assert.match(out, /^--claude-science {2}— click to show again \| .*param3="claude-science"/m);
   assert.match(out, /--Port range: 3000–9999/);
   assert.match(out, /--Porthole 0\.1\.0/);
@@ -121,10 +121,10 @@ test('render: docker entries show container names instead of backend PID', () =>
   assert.match(out, /--container balance-api-1 · image balance-api/);
   assert.match(out, /--up 1h · labeled 40m ago/);
   assert.doesNotMatch(out, /com\.docker\.backend/);
-  assert.match(out, /^:3000[\u2009\u2006\u200A]* {2}balance · frontend \| .*param2=open param3="3000"/m);
+  assert.match(out, /^:3000[\u2009\u2006\u200A]* {2}balance · frontend \| .*param1="http:\/\/localhost:3000"/m);
   assert.match(out, /--Label this port… .*param3="3000"/);
   // Docker ports get "Stop container…" (docker stop) instead of killing Docker's PID.
-  assert.match(out, /--Stop container… .*param2=confirm-kill param3="3000".*sfimage=stop\.circle/);
+  assert.match(out, /--Stop container… .*param2="confirm-kill" param3="3000" param4="-" param5="balance · frontend \(container balance-frontend-1\)" param6="balance-frontend-1".*sfimage=stop\.circle/);
   assert.doesNotMatch(out, /Kill server/);
 });
 
@@ -133,8 +133,8 @@ test('render: label/rename items, cwd "/" hidden, kill last, icons on every acti
     3001: { port: 3001, title: 'A', cwd: '/a', registeredAt: new Date().toISOString() },
   });
   const out = render(entries, ctx);
-  assert.match(out, /--Rename… \| .*param2=prompt-label param3="3001"/);
-  assert.match(out, /--Label this port… \| .*param2=prompt-label param3="8000"/);
+  assert.match(out, /--Rename… \| .*param2="prompt-label" param3="3001" param4="feat\/x \(node\)" param5="\/a" param6="feat\/x"/);
+  assert.match(out, /--Label this port… \| .*param2="prompt-label" param3="8000"/);
   assert.doesNotMatch(out, /^--\/ \|/m);
   assert.doesNotMatch(out, /^:8000.*color=gray/m); // unlabeled title row is not grayed out
   const actions = out.split('\n').filter((l) => /^--.*\bbash=/.test(l));

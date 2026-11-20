@@ -198,15 +198,31 @@ export function parseNetstatListen(text) {
 
 /** Cheap change detector: sorted "pid:port" of dev-range listeners. Falls back to lsof if netstat's format isn't recognized. */
 export function listenFingerprint(config = loadConfig()) {
-  const text = run('/usr/sbin/netstat', ['-anv', '-p', 'tcp']);
-  let rows = parseNetstatListen(text);
-  if (!rows.length && /LISTEN/.test(text)) rows = parseLsofListen(run(LSOF, ['-nP', '-iTCP', '-sTCP:LISTEN', '-F', 'pcn']));
+  const rows = netstatListeners();
   const inRange = (port) => isDevCandidate({ port, command: '' }, { ...config, ignoreCommands: [] });
   return rows
     .filter((r) => inRange(r.port))
     .map((r) => `${r.pid}:${r.port}`)
     .sort()
     .join(',');
+}
+
+/** Every {pid, command, port} TCP listener, via netstat (~10 ms); lsof if netstat's format isn't recognized. */
+function netstatListeners() {
+  const text = run('/usr/sbin/netstat', ['-anv', '-p', 'tcp']);
+  const rows = parseNetstatListen(text);
+  if (!rows.length && /LISTEN/.test(text)) return parseLsofListen(run(LSOF, ['-nP', '-iTCP', '-sTCP:LISTEN', '-F', 'pcn']));
+  return rows;
+}
+
+/** PIDs listening on `port` right now. Cheap: used by menu actions to check what the menu showed is still true. */
+export function listenersOn(port) {
+  return new Set(netstatListeners().filter((r) => r.port === Number(port)).map((r) => r.pid));
+}
+
+/** Pure: the PIDs from `pids` that are still in `listening` (a PID that stopped listening may have been reused). */
+export function filterLivePids(pids, listening) {
+  return pids.filter((p) => listening.has(p));
 }
 
 /** Pure: branch name from a .git/HEAD file's text, in the same form gitInfo() reports ("detached@<sha7>" when detached). */

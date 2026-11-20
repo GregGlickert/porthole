@@ -6,7 +6,7 @@ import path from 'node:path';
 
 process.env.PORTHOLE_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'porthole-stream-test-'));
 const { plan, aged, settingsKey, looksStale, REDRAW_MS } = await import('../src/stream.js');
-const { parseNetstatListen, parseHead, headBranch } = await import('../src/detect.js');
+const { parseNetstatListen, parseHead, headBranch, filterLivePids } = await import('../src/detect.js');
 const store = await import('../src/store.js');
 const { freePorts, markSeen } = await import('../src/board.js');
 const { render } = await import('../src/swiftbar.js');
@@ -132,14 +132,30 @@ test('render: open-in items only with a folder; actions never force a refresh', 
     { node: '/n', cli: '/c', editor: 'Zed', terminal: 'Ghostty' },
   );
   assert.equal((out.match(/Open in Zed/g) || []).length, 1);
-  assert.match(out, /--Open in Ghostty \| .*param2=open-terminal param3="3000" param4="\/repo"/);
-  assert.match(out, /--Open in Finder \| bash=\/usr\/bin\/open param1="\/repo"/);
-  assert.doesNotMatch(out, /param2=(open|copy|remove|ignore|confirm-kill|prompt-label).*refresh=true/);
+  assert.match(out, /--Open in Zed \| bash="\/usr\/bin\/open" param1="-a" param2="Zed" param3="\/repo" terminal=false/);
+  assert.match(out, /--Open in Ghostty \| bash="\/usr\/bin\/open" param1="-a" param2="Ghostty" param3="\/repo" terminal=false/);
+  assert.match(out, /--Open in Finder \| bash="\/usr\/bin\/open" param1="\/repo" terminal=false/);
+  assert.doesNotMatch(out, /param2="(open|copy|remove|ignore|confirm-kill|prompt-label)".*refresh=true/);
 });
 
 test('pickApps: config wins, else first installed', () => {
   const has = (n) => n === 'Visual Studio Code' || n === 'Terminal';
-  assert.deepEqual(pickApps({}, has), { editor: 'Visual Studio Code', terminal: 'Terminal' });
-  assert.deepEqual(pickApps({ editor: 'Zed', terminal: 'iTerm' }, has), { editor: 'Zed', terminal: 'iTerm' });
-  assert.deepEqual(pickApps({}, () => false), { editor: null, terminal: null });
+  assert.deepEqual(pickApps({}, has), { editor: 'Visual Studio Code', terminal: 'Terminal', browser: null });
+  assert.deepEqual(pickApps({ editor: 'Zed', terminal: 'iTerm', browser: 'Arc' }, has), { editor: 'Zed', terminal: 'iTerm', browser: 'Arc' });
+  assert.equal(pickApps({}, (n) => n === 'Google Chrome').browser, 'Google Chrome');
+  assert.deepEqual(pickApps({}, () => false), { editor: null, terminal: null, browser: null });
+});
+
+test('render: open and copy run without node; browser picked at render time', () => {
+  const e = { port: 3000, url: 'http://localhost:3000', status: 'unlabeled', pids: [1], command: 'node', docker: false };
+  const out = render([e], { node: '/n', cli: '/c', browser: 'Google Chrome' });
+  assert.match(out, /^:3000.* \| bash="\/usr\/bin\/open" param1="-a" param2="Google Chrome" param3="http:\/\/localhost:3000" terminal=false$/m);
+  assert.match(out, /--Copy URL \| bash="\/bin\/bash" param1="-c" param2="printf %s \$1 \| \/usr\/bin\/pbcopy" param3="porthole" param4="http:\/\/localhost:3000" terminal=false/);
+  // No click on open/copy/open-in goes through node.
+  assert.doesNotMatch(out, /bash="\/n".*param2="(open|copy|open-editor|open-terminal)"/);
+});
+
+test('filterLivePids drops PIDs no longer listening (never signal a reused PID)', () => {
+  assert.deepEqual(filterLivePids([10, 20], new Set([20, 30])), [20]);
+  assert.deepEqual(filterLivePids([10], new Set()), []);
 });

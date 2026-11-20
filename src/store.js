@@ -55,6 +55,7 @@ export function loadConfig() {
     portMax: Number.isInteger(c.portMax) ? c.portMax : undefined,
     editor: typeof c.editor === 'string' && c.editor.trim() ? c.editor.trim() : undefined,
     terminal: typeof c.terminal === 'string' && c.terminal.trim() ? c.terminal.trim() : undefined,
+    browser: typeof c.browser === 'string' && c.browser.trim() ? c.browser.trim() : undefined,
   };
 }
 

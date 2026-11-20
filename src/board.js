@@ -1,6 +1,6 @@
 // Merge live scan results with stored labels. Pure core + thin I/O wrappers.
 import * as store from './store.js';
-import { scan, listeningPorts, IGNORE_PORTS, PORT_MIN, PORT_MAX } from './detect.js';
+import { scan, listeningPorts, listenersOn, IGNORE_PORTS, PORT_MIN, PORT_MAX } from './detect.js';
 import { loadConfig } from './store.js';
 
 export const PRUNE_AFTER_MS = 24 * 60 * 60 * 1000;
@@ -130,12 +130,14 @@ export function findLive(port, live = scan()) {
 /**
  * Register/overwrite a label. Waits up to `waitMs` for the port to start listening
  * (Claude often registers right after launching a server).
+ * `live` ({cwd, branch}) is what the caller already knows about the server (the menu passes it); it's used instead of
+ * a full scan when something is still listening on the port.
  */
-export async function register({ port, title, description, waitMs = 10000 }) {
+export async function register({ port, title, description, waitMs = 10000, live }) {
   port = Number(port);
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error(`Invalid port: ${port}`);
   if (!title || !String(title).trim()) throw new Error('title is required');
-  let l = findLive(port);
+  let l = live && listenersOn(port).size ? live : findLive(port);
   const deadline = Date.now() + waitMs;
   while (!l && Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, 1000));

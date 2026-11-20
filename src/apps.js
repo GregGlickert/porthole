@@ -13,11 +13,15 @@ export function installed(name) {
   return APP_DIRS.some((d) => fs.existsSync(path.join(d, `${name}.app`)));
 }
 
-/** @returns {{editor: string|null, terminal: string|null}} */
+/** Browser for "Open": config.json `browser`, else Chrome if installed, else null (= the default browser). */
+export const BROWSERS = ['Google Chrome'];
+
+/** @returns {{editor: string|null, terminal: string|null, browser: string|null}} */
 export function pickApps(config = {}, isInstalled = installed) {
   return {
     editor: config.editor || EDITORS.find(isInstalled) || null,
     terminal: config.terminal || TERMINALS.find(isInstalled) || null,
+    browser: config.browser || BROWSERS.find(isInstalled) || null,
   };
 }
 
