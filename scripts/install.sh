@@ -1,6 +1,6 @@
 #!/bin/bash
-# Install Porthole: deps, the `porthole` launcher, the SwiftBar plugin, and MCP setup instructions.
-# Safe to re-run (e.g. after moving the repo or changing node versions).
+# Install Porthole: build Porthole.app, put it in Applications, link the `porthole` command, start the menu.
+# Safe to re-run (e.g. after pulling changes). Replaces the old Node + SwiftBar install if there is one.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PORTHOLE_HOME="${PORTHOLE_HOME:-$HOME/.porthole}"
@@ -8,57 +8,61 @@ BIN="$PORTHOLE_HOME/bin/porthole"
 ok() { echo "✓ $*"; }
 warn() { echo "! $*"; }
 
-cd "$ROOT"
-
-# 1. Dependencies
-if ! command -v node >/dev/null; then
-  warn "node not found on PATH. Install Node 20+ (nvm, Volta or Homebrew) and re-run."
+# 1. Toolchain
+if ! command -v swift >/dev/null; then
+  warn "Swift not found. Install Xcode or the Command Line Tools (xcode-select --install) and re-run."
   exit 1
 fi
-NODE_MAJOR="$(node -p 'process.versions.node.split(".")[0]')"
-if [ "$NODE_MAJOR" -lt 20 ]; then
-  warn "node $(node -v) is too old; Porthole needs Node 20+."
-  exit 1
+
+# 2. Build
+echo "Building Porthole (first build takes a minute)…"
+BUILD="$(mktemp -d)"
+trap 'rm -rf "$BUILD"' EXIT
+"$ROOT/scripts/build-app.sh" "$BUILD" >/dev/null
+ok "Built Porthole.app"
+
+# 3. Install into /Applications (or ~/Applications if that isn't writable)
+DEST=/Applications
+[ -w "$DEST" ] || DEST="$HOME/Applications"
+mkdir -p "$DEST"
+APP="$DEST/Porthole.app"
+if pgrep -f "Porthole.app/Contents/MacOS/Porthole" >/dev/null; then
+  osascript -e 'tell application id "io.github.gregglickert.porthole" to quit' >/dev/null 2>&1 || true
+  sleep 1
+  pkill -f "Porthole.app/Contents/MacOS/Porthole" 2>/dev/null || true
 fi
-npm install --silent
-chmod +x src/cli.js src/mcp.js
-ok "Dependencies installed (node $(node -v))"
-
-# 2. Launcher: finds node at run time, so nvm/Volta/Homebrew switches don't break anything.
-mkdir -p "$(dirname "$BIN")"
-sed -e "s#__ROOT__#$ROOT#" scripts/porthole-shim.sh > "$BIN"
-chmod +x "$BIN"
-ok "Launcher installed: $BIN"
-
-# 3. SwiftBar plugin
-SWIFTBAR_APP=""
-for app in /Applications/SwiftBar.app "$HOME/Applications/SwiftBar.app"; do
-  [ -d "$app" ] && SWIFTBAR_APP="$app"
+rm -rf "$APP"
+# A copy from an earlier install in the other Applications folder would be a second, stale Porthole.
+for other in /Applications/Porthole.app "$HOME/Applications/Porthole.app"; do
+  [ "$other" != "$APP" ] && [ -d "$other" ] && rm -rf "$other" 2>/dev/null || true
 done
+ditto "$BUILD/Porthole.app" "$APP"
+ok "Installed $APP"
+
+# 4. The command MCP clients run. Same path as before, so existing MCP configs keep working.
+mkdir -p "$(dirname "$BIN")"
+rm -f "$BIN"
+ln -s "$APP/Contents/Helpers/porthole" "$BIN"
+ok "Linked $BIN → $APP/Contents/Helpers/porthole"
+
+# 5. Remove the old SwiftBar plugin (Node version), if installed
 PLUGIN_DIR="${SWIFTBAR_PLUGIN_DIR:-$(defaults read com.ameba.SwiftBar PluginDirectory 2>/dev/null || true)}"
-if [ -z "$SWIFTBAR_APP" ]; then
-  warn "SwiftBar isn't installed. Install it with: brew install --cask swiftbar"
-  warn "Then launch it once, choose a plugin folder, and re-run this script."
-elif [ -z "$PLUGIN_DIR" ]; then
-  warn "SwiftBar has no plugin folder yet. Launch SwiftBar, choose one, and re-run this script."
-else
-  mkdir -p "$PLUGIN_DIR"
-  # Older installs polled on a timer (porthole.5s.sh / porthole.60s.sh); drop them so only one copy runs.
-  rm -f "$PLUGIN_DIR/porthole.5s.sh" "$PLUGIN_DIR/porthole.60s.sh"
-  sed -e "s#__PORTHOLE__#$BIN#" swiftbar/porthole.sh > "$PLUGIN_DIR/porthole.sh"
-  chmod +x "$PLUGIN_DIR/porthole.sh"
-  ok "SwiftBar plugin installed: $PLUGIN_DIR/porthole.sh"
+REMOVED=0
+if [ -n "$PLUGIN_DIR" ]; then
+  for f in porthole.sh porthole.5s.sh porthole.60s.sh; do  # only the names the Node installer used
+    if [ -e "$PLUGIN_DIR/$f" ]; then rm -f "$PLUGIN_DIR/$f" && REMOVED=1; fi
+  done
+fi
+if [ "$REMOVED" = 1 ]; then
   open -g "swiftbar://refreshallplugins" 2>/dev/null || true
+  ok "Removed the old SwiftBar plugin (SwiftBar itself is no longer needed)"
 fi
+pkill -f "src/cli.js stream" 2>/dev/null || true
 
-# 4. Docker (optional): the plugin needs `docker` on SwiftBar's PATH to name containers.
-SWIFTBAR_PATH="/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/usr/local/bin:$HOME/.docker/bin"
-if command -v docker >/dev/null && ! PATH="$SWIFTBAR_PATH" command -v docker >/dev/null; then
-  warn "docker is at $(command -v docker), which the menu bar can't see. Docker ports will show"
-  warn "without container names. Symlink it into /usr/local/bin to fix that."
-fi
+# 6. Start it
+open "$APP"
+ok "Porthole is running in your menu bar. Quit it from its menu; turn on Settings → Launch at login to start it automatically."
 
-# 5. Connect your agent
 cat <<EOF
 
 Connect your MCP client (the server command is: $BIN mcp)
@@ -68,6 +72,6 @@ Connect your MCP client (the server command is: $BIN mcp)
   Cursor, Claude Desktop, VS Code, Windsurf: add this server to the client's MCP config
                  { "command": "$BIN", "args": ["mcp"] }
 
-See README.md → "Connect your agent" for each client's config file.
+Already connected from the Node version? Nothing to change: it's the same path.
 Optional: add $(dirname "$BIN") to your PATH to use the \`porthole\` command in a terminal.
 EOF
