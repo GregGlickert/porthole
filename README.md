@@ -21,7 +21,7 @@ When you have three checkouts, two worktrees and a Docker stack all serving some
 - **Docker-aware.** Published container ports are named by compose project · service, and get **Stop container…** (`docker stop` for just that container) instead of Kill.
 - **No port collisions between agents.** `suggest_free_port` hands out ports that nothing is listening on and no label claims. It reserves them for 2 minutes, so two agents working in parallel never get the same one.
 - **Stays current by itself.** A server shows up or disappears within ~5 s, even while the menu is open. If a different checkout takes over a labeled port, the old label is set aside. Labels for ports that stay dead for 24 h are pruned.
-- **A real Mac app.** Porthole is a small native menu bar app. **Quit Porthole** (⌘Q) stops it completely; open it again from Spotlight or Applications. Turn on **Settings → Launch at login** to start it automatically.
+- **A real Mac app.** Porthole is a small native menu bar app 100% local with no telemetry. **Quit Porthole** (⌘Q) stops it completely; open it again from Spotlight or Applications. Turn on **Settings → Launch at login** to start it automatically.
 
 <p align="center">
   <img src="assets/screenshots/submenu.png" alt="A port's submenu: branch, description, uptime, folder, PID, and actions to open, copy, open in editor, terminal or Finder, rename, remove the label, hide or kill" width="680">
@@ -46,10 +46,6 @@ git clone https://github.com/GregGlickert/porthole.git && cd porthole
 ```
 
 `install.sh` builds `Porthole.app`, copies it to `/Applications`, links the `porthole` command at `~/.porthole/bin/porthole`, and starts the menu. It's safe to re-run after pulling changes.
-
-**Upgrading from the Node + SwiftBar version?** Just run `install.sh`. It removes the old SwiftBar plugin, and your labels, settings and MCP configs carry over unchanged (same files, same `~/.porthole/bin/porthole` path). You can uninstall SwiftBar afterwards if nothing else uses it.
-
-To build the app without installing it: `scripts/build-app.sh` (writes `.build/Porthole.app`).
 
 ### Uninstall
 
