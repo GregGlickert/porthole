@@ -15,9 +15,27 @@ const iconParam = ICON ? `templateImage=${ICON}` : 'sfimage=circle.circle';
 const clean = (s) => String(s ?? '').replace(/\s*[|\n\r]+\s*/g, ' / ').trim();
 const q = (s) => `"${String(s).replace(/"/g, '\\"')}"`;
 
-function action({ node, cli }, verb, arg, extra = '') {
-  const a3 = arg === undefined ? '' : ` param3=${q(arg)}`;
-  return `bash=${q(node)} param1=${q(cli)} param2=${verb}${a3} terminal=false${extra}`;
+/** A SwiftBar action running `cmd` with `args` as param1…paramN (each quoted; never through a shell). */
+function exec(cmd, args = []) {
+  return [`bash=${q(cmd)}`, ...args.map((a, i) => `param${i + 1}=${q(a ?? '')}`), 'terminal=false'].join(' ');
+}
+
+/**
+ * Menu action through the porthole CLI: `node cli.js <verb> ...args`. Missing values become "-" (the CLI reads it as
+ * absent) so later args keep their position even if SwiftBar drops empty params.
+ */
+function action({ node, cli }, verb, ...args) {
+  return exec(node, [cli, verb, ...args.map((a) => (a == null || a === '' ? '-' : String(a)))]);
+}
+
+/** Open a URL or folder directly with /usr/bin/open, no node: `open -a <app> <target>` or plain `open <target>`. */
+function openWith(app, target) {
+  return exec('/usr/bin/open', app ? ['-a', app, target] : [target]);
+}
+
+/** Copy a URL to the clipboard without node. It's passed as an argument to the script, never interpolated (no spaces, so $1 needs no quotes). */
+function copyText(url) {
+  return exec('/bin/bash', ['-c', 'printf %s $1 | /usr/bin/pbcopy', 'porthole', url]);
 }
 
 /** One-line human description of a live server for dialogs: "balance · frontend (container balance-frontend-1)" or "feat/x · app (node)". */
@@ -138,8 +156,9 @@ function entryLines(e, ctx, portWidth = 4) {
   const port = portLabel(e.port, portWidth);
   const loc = where(e);
   const label = e.status === 'labeled' ? truncate(e.title, 48) : loc || 'unlabeled';
-  // One row per port; everything else (where it runs, actions) lives in its submenu.
-  lines.push(`${port}  ${label}`);
+  // One row per port: click opens it in Chrome, hover shows the submenu (where it runs, actions).
+  // A SwiftBar row with a submenu still runs its own action on click (tested in SwiftBar 2.1.1).
+  lines.push(`${port}  ${label} | ${openWith(ctx.browser, e.url)}`);
 
   const sub =
     e.status === 'labeled'
@@ -167,19 +186,27 @@ function entryLines(e, ctx, portWidth = 4) {
     lines.push(`--PID ${e.pids.join(', ')} · ${clean(e.command)} | size=11 color=gray`);
   }
   lines.push('-----');
-  lines.push(`--Open ${e.url} | ${action(ctx, 'open', e.port)} sfimage=safari`);
-  lines.push(`--Copy URL | ${action(ctx, 'copy', e.port)} sfimage=doc.on.doc`);
-  if (e.status === 'labeled') lines.push(`--Rename… | ${action(ctx, 'prompt-label', e.port, ' refresh=true')} sfimage=pencil`);
-  else lines.push(`--Label this port… | ${action(ctx, 'prompt-label', e.port, ' refresh=true')} sfimage=tag`);
-  if (e.status !== 'unlabeled') lines.push(`--Remove label | ${action(ctx, 'remove', e.port, ' refresh=true')} sfimage=tag.slash`);
-  lines.push(`--Hide this port | ${action(ctx, 'ignore', e.port, ' refresh=true')} sfimage=eye.slash`);
+  lines.push(`--Open ${e.url} | ${openWith(ctx.browser, e.url)} sfimage=safari`);
+  lines.push(`--Copy URL | ${copyText(e.url)} sfimage=doc.on.doc`);
+  if (e.root) {
+    lines.push('-----');
+    if (ctx.editor) lines.push(`--Open in ${clean(ctx.editor)} | ${openWith(ctx.editor, e.root)} sfimage=chevron.left.forwardslash.chevron.right`);
+    if (ctx.terminal) lines.push(`--Open in ${clean(ctx.terminal)} | ${openWith(ctx.terminal, e.root)} sfimage=terminal`);
+    lines.push(`--Open in Finder | ${openWith(null, e.root)} sfimage=folder`);
+  }
+  // Pass what the menu already knows so the dialog opens without rescanning.
+  const labelAct = action(ctx, 'prompt-label', e.port, describeLive(e), e.cwd, e.branch);
+  if (e.status === 'labeled') lines.push(`--Rename… | ${labelAct} sfimage=pencil`);
+  else lines.push(`--Label this port… | ${labelAct} sfimage=tag`);
+  if (e.status !== 'unlabeled') lines.push(`--Remove label | ${action(ctx, 'remove', e.port)} sfimage=tag.slash`);
+  lines.push(`--Hide this port | ${action(ctx, 'ignore', e.port)} sfimage=eye.slash`);
   if (!e.docker) {
     lines.push('-----');
-    lines.push(`--Kill server… | ${action(ctx, 'confirm-kill', e.port, ' refresh=true')} sfimage=xmark.octagon`);
+    lines.push(`--Kill server… | ${action(ctx, 'confirm-kill', e.port, e.pids.join(','), describeLive(e))} sfimage=xmark.octagon`);
   } else if (e.docker.container) {
     // Never kill the PID for Docker ports (it's Docker itself); confirm-kill runs `docker stop <container>`.
     lines.push('-----');
-    lines.push(`--Stop container… | ${action(ctx, 'confirm-kill', e.port, ' refresh=true')} sfimage=stop.circle`);
+    lines.push(`--Stop container… | ${action(ctx, 'confirm-kill', e.port, '', describeLive(e), e.docker.container)} sfimage=stop.circle`);
   }
   return lines;
 }
@@ -210,11 +237,11 @@ function settingsLines(ctx) {
   } else {
     if (cfg.ignorePorts.length) lines.push('--Hidden ports | size=11 color=gray');
     for (const p of [...cfg.ignorePorts].sort((a, b) => a - b)) {
-      lines.push(`--:${p}  — click to show again | ${action(ctx, 'unignore', p, ' refresh=true')} sfimage=eye.slash`);
+      lines.push(`--:${p}  — click to show again | ${action(ctx, 'unignore', p)} sfimage=eye.slash`);
     }
     if (cfg.ignoreCommands.length) lines.push('--Hidden processes | size=11 color=gray');
     for (const c of cfg.ignoreCommands) {
-      lines.push(`--${clean(c)}  — click to show again | ${action(ctx, 'unignore', c, ' refresh=true')} sfimage=eye.slash`);
+      lines.push(`--${clean(c)}  — click to show again | ${action(ctx, 'unignore', c)} sfimage=eye.slash`);
     }
   }
   lines.push('-----');
@@ -230,6 +257,6 @@ function aboutLines(ctx) {
   lines.push('--Which feature is running on which localhost port. | size=11 color=gray');
   lines.push('-----');
   if (ctx.repoUrl) lines.push(`--View on GitHub | href=${ctx.repoUrl} sfimage=link`);
-  if (ctx.root) lines.push(`--Open project folder | bash=/usr/bin/open param1=${q(ctx.root)} terminal=false sfimage=folder`);
+  if (ctx.root) lines.push(`--Open project folder | ${openWith(null, ctx.root)} sfimage=folder`);
   return lines;
 }

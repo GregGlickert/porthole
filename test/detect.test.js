@@ -74,6 +74,7 @@ test('parseDockerPs maps host ports to containers (dedupes v4/v6, ranges, unpubl
     image: 'balance-api',
     project: 'balance',
     service: 'api',
+    workingDir: null,
     containerPort: 8080,
   });
   assert.equal(m.get(9001).containerPort, 81);

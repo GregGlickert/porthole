@@ -4,7 +4,6 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import fs from 'node:fs';
-import { spawn } from 'node:child_process';
 import { getBoard, register, updateLabel, remove, suggestFreePorts } from './board.js';
 
 const PKG = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
@@ -19,19 +18,6 @@ const server = new McpServer(
       'Use list_servers to answer "what is on port X?".',
   },
 );
-
-// Ask SwiftBar to redraw the menu now instead of waiting for its 60s timer.
-// Only label changes call this; the plugin's own writes (lastSeenAt) must not, or it would refresh itself in a loop.
-function refreshMenuBar() {
-  if (process.platform !== 'darwin' || process.env.PORTHOLE_NO_MENU_REFRESH) return;
-  try {
-    const child = spawn('/usr/bin/open', ['-g', 'swiftbar://refreshplugin?name=porthole'], { stdio: 'ignore', detached: true });
-    child.on('error', () => {}); // SwiftBar not installed: nothing to refresh
-    child.unref();
-  } catch {
-    /* ignore */
-  }
-}
 
 const json = (obj) => ({ content: [{ type: 'text', text: JSON.stringify(obj, null, 2) }] });
 const fail = (err) => ({ content: [{ type: 'text', text: `Error: ${err.message}` }], isError: true });
@@ -53,7 +39,6 @@ server.registerTool(
   async (args) => {
     try {
       const registered = await register(args);
-      refreshMenuBar();
       return json({ registered });
     } catch (err) {
       return fail(err);
@@ -71,7 +56,6 @@ server.registerTool(
   async (args) => {
     try {
       const updated = updateLabel(args);
-      refreshMenuBar();
       return json({ updated });
     } catch (err) {
       return fail(err);
@@ -89,7 +73,6 @@ server.registerTool(
   async ({ port }) => {
     try {
       const removed = remove(port);
-      refreshMenuBar();
       return json({ removed });
     } catch (err) {
       return fail(err);
@@ -103,7 +86,7 @@ server.registerTool(
     title: 'List dev servers',
     description:
       'List every listening local dev server (ports 3000–9999) with its label, branch, repo folder, uptimeSec and status ' +
-      '(labeled | unlabeled | stale — stale means a different checkout now owns the port). ' +
+      '(labeled | unlabeled | stale — stale means a different checkout now owns the port) and root (checkout folder). ' +
       'Docker-published ports include docker: {container, image, project, service, containerPort}. Pass port to get just one.',
     inputSchema: { port: port.optional() },
   },
@@ -123,7 +106,8 @@ server.registerTool(
     title: 'Suggest free port',
     description:
       'Return free localhost port(s) in the dev range (default 3000–9999) that nothing is listening on and no label claims. ' +
-      'Call this before starting a new dev server so parallel checkouts do not collide.',
+      'Call this before starting a new dev server so parallel checkouts do not collide. ' +
+      'Returned ports are reserved for 2 minutes (other callers will not get them) until you call register_server.',
     inputSchema: {
       preferred: port.optional().describe('Start searching here, e.g. the framework default 3000'),
       count: z.number().int().min(1).max(20).optional().describe('How many ports to return (default 1)'),

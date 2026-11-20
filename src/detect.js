@@ -1,5 +1,6 @@
 // Live detection of listening dev servers via lsof, plus cwd → git branch lookup.
 import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
 import path from 'node:path';
 import { loadConfig } from './store.js';
 
@@ -101,7 +102,9 @@ export function parsePsEtime(text) {
   return map;
 }
 
-const DOCKER_FORMAT = '{{.ID}}\t{{.Names}}\t{{.Image}}\t{{.Ports}}\t{{.Label "com.docker.compose.project"}}\t{{.Label "com.docker.compose.service"}}';
+const DOCKER_FORMAT =
+  '{{.ID}}\t{{.Names}}\t{{.Image}}\t{{.Ports}}\t{{.Label "com.docker.compose.project"}}\t{{.Label "com.docker.compose.service"}}' +
+  '\t{{.Label "com.docker.compose.project.working_dir"}}';
 
 /**
  * Parse `docker ps --format DOCKER_FORMAT` output into Map<hostPort, container info>.
@@ -111,7 +114,7 @@ export function parseDockerPs(text) {
   const map = new Map();
   for (const line of text.split('\n')) {
     if (!line.trim()) continue;
-    const [id, container, image, ports = '', project = '', service = ''] = line.split('\t');
+    const [id, container, image, ports = '', project = '', service = '', workingDir = ''] = line.split('\t');
     for (const part of ports.split(',')) {
       const m = part.trim().match(/:(\d+)(?:-(\d+))?->(\d+)(?:-\d+)?\/tcp$/);
       if (!m) continue;
@@ -125,6 +128,7 @@ export function parseDockerPs(text) {
           image,
           project: project || null,
           service: service || null,
+          workingDir: workingDir || null,
           containerPort: Number(m[3]) + (p - lo),
         });
       }
@@ -159,15 +163,93 @@ export function dockerPorts(now = Date.now()) {
 }
 
 export function gitInfo(cwd) {
-  if (!cwd || cwd === '/') return { branch: null, repo: null };
+  if (!cwd || cwd === '/') return { branch: null, repo: null, root: null };
   const out = run('git', ['-C', cwd, 'rev-parse', '--abbrev-ref', 'HEAD', '--show-toplevel']).trim().split('\n');
-  if (out.length < 2 || !out[0]) return { branch: null, repo: path.basename(cwd) };
+  if (out.length < 2 || !out[0]) return { branch: null, repo: path.basename(cwd), root: null };
   let branch = out[0];
   if (branch === 'HEAD') {
     const sha = run('git', ['-C', cwd, 'rev-parse', '--short', 'HEAD']).trim();
     branch = sha ? `detached@${sha}` : 'detached';
   }
-  return { branch, repo: path.basename(out[1]) };
+  return { branch, repo: path.basename(out[1]), root: out[1] };
+}
+
+/**
+ * Parse `netstat -anv -p tcp` LISTEN rows into unique {pid, command, port}. ~25× cheaper than lsof, so the
+ * live menu polls this and only runs the full scan() when the result changes.
+ * Local address is `127.0.0.1.3000`, `*.3000` or `::1.3000`; the process column is `name:pid` (name cut to 16 chars, may contain spaces).
+ */
+export function parseNetstatListen(text) {
+  const out = [];
+  const seen = new Set();
+  for (const line of text.split('\n')) {
+    const m = line.match(/^tcp\S*\s+\d+\s+\d+\s+(\S+)\s+\S+\s+LISTEN\s+\d+\s+\d+\s+\d+\s+\d+\s+(.+?):(\d+)\s/);
+    if (!m) continue;
+    const port = Number(m[1].slice(m[1].lastIndexOf('.') + 1));
+    const pid = Number(m[3]);
+    if (!Number.isInteger(port)) continue;
+    const key = `${pid}:${port}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ pid, command: m[2].trim(), port });
+  }
+  return out;
+}
+
+/** Cheap change detector: sorted "pid:port" of dev-range listeners. Falls back to lsof if netstat's format isn't recognized. */
+export function listenFingerprint(config = loadConfig()) {
+  const rows = netstatListeners();
+  const inRange = (port) => isDevCandidate({ port, command: '' }, { ...config, ignoreCommands: [] });
+  return rows
+    .filter((r) => inRange(r.port))
+    .map((r) => `${r.pid}:${r.port}`)
+    .sort()
+    .join(',');
+}
+
+/** Every {pid, command, port} TCP listener, via netstat (~10 ms); lsof if netstat's format isn't recognized. */
+function netstatListeners() {
+  const text = run('/usr/sbin/netstat', ['-anv', '-p', 'tcp']);
+  const rows = parseNetstatListen(text);
+  if (!rows.length && /LISTEN/.test(text)) return parseLsofListen(run(LSOF, ['-nP', '-iTCP', '-sTCP:LISTEN', '-F', 'pcn']));
+  return rows;
+}
+
+/** PIDs listening on `port` right now. Cheap: used by menu actions to check what the menu showed is still true. */
+export function listenersOn(port) {
+  return new Set(netstatListeners().filter((r) => r.port === Number(port)).map((r) => r.pid));
+}
+
+/** Pure: the PIDs from `pids` that are still in `listening` (a PID that stopped listening may have been reused). */
+export function filterLivePids(pids, listening) {
+  return pids.filter((p) => listening.has(p));
+}
+
+/** Pure: branch name from a .git/HEAD file's text, in the same form gitInfo() reports ("detached@<sha7>" when detached). */
+export function parseHead(text) {
+  const t = String(text || '').trim();
+  const m = t.match(/^ref:\s*refs\/heads\/(.+)$/);
+  if (m) return m[1];
+  return /^[0-9a-f]{7,}$/.test(t) ? `detached@${t.slice(0, 7)}` : null;
+}
+
+/**
+ * Current branch of the checkout at `root` by reading .git/HEAD directly (no git process), or null if unknown.
+ * Worktrees have a `.git` file pointing at their gitdir.
+ */
+export function headBranch(root) {
+  if (!root) return null;
+  try {
+    let gitDir = path.join(root, '.git');
+    if (fs.statSync(gitDir).isFile()) {
+      const m = fs.readFileSync(gitDir, 'utf8').match(/^gitdir:\s*(.+)$/m);
+      if (!m) return null;
+      gitDir = path.resolve(root, m[1].trim());
+    }
+    return parseHead(fs.readFileSync(path.join(gitDir, 'HEAD'), 'utf8'));
+  } catch {
+    return null;
+  }
 }
 
 /** Every TCP port anything is listening on (no dev-range filtering). */
@@ -205,12 +287,12 @@ export function scan(config = loadConfig()) {
       if (s.docker) {
         const c = containers.get(s.port);
         const { uptimeSec = null, id, ...info } = c || {};
-        return { ...s, docker: info, cwd: null, branch: null, repo: c?.project || null, uptimeSec };
+        return { ...s, docker: info, cwd: null, root: info.workingDir || null, branch: null, repo: c?.project || null, uptimeSec };
       }
       const cwd = cwds.get(s.pids[0]) ?? null;
       if (cwd && !gitCache.has(cwd)) gitCache.set(cwd, gitInfo(cwd));
-      const { branch, repo } = cwd ? gitCache.get(cwd) : { branch: null, repo: null };
-      return { ...s, cwd, branch, repo, uptimeSec: etimes.get(s.pids[0]) ?? null };
+      const { branch, repo, root } = cwd ? gitCache.get(cwd) : { branch: null, repo: null, root: null };
+      return { ...s, cwd, root: root || (cwd && cwd !== '/' ? cwd : null), branch, repo, uptimeSec: etimes.get(s.pids[0]) ?? null };
     })
     .sort((a, b) => a.port - b.port);
 }

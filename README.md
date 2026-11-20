@@ -1,24 +1,35 @@
 # Porthole
 
-Which feature is running on which localhost port — in your macOS menu bar, labeled by your coding agent (Claude Code, Codex, Cursor, or any MCP client).
+**Which feature is running on which localhost port**, right in your macOS menu bar, labeled by your coding agent.
 
-```
-◉3
-:3001  Upload retry flow ▸        ← one row per port; submenu: branch · repo, description, uptime + label age,
-                                     cwd/PID, Open, Copy URL, Rename…, Remove label, Hide, Kill server… (asks first)
-:3003  fix/css · myapp ▸          ← running but nobody labeled it yet; submenu has "Label this port…"
-:8080  Main API ▸                 ← Docker ports: submenu shows compose project · service, container and image,
-                                     and Stop container… instead of Kill
-Settings ▸                        ← hidden ports/processes (click to unhide), port range, open config/labels file
-About Porthole ▸                  ← version, View on GitHub, open project folder
-Refresh
-```
+When you have three checkouts, two worktrees and a Docker stack all serving something on `localhost`, it's hard to remember that `:3001` is the checkout redesign and `:3003` is the bug fix from yesterday. Porthole gives every port a name. Your agent (Claude Code, Codex, Cursor or any MCP client) labels the dev server it just started, and the menu shows the label next to the port with its branch, folder and uptime.
 
-- **MCP server** (`src/mcp.js`) — your agent calls `register_server(port, title, description?)` after starting a dev server. Branch and folder are detected automatically. Also `update_server`, `remove_server`, `list_servers` (optional `port` filter; includes uptime and Docker container info), and `suggest_free_port(preferred?, count?)`, which returns ports nothing is listening on and no label claims.
-- **SwiftBar plugin** — refreshes every 60s, and immediately whenever an agent registers, updates or removes a label. Shows every listening port in 3000–9999 (system processes and DB ports filtered), with git branch, even if unregistered.
-- **No daemon** — labels live in `~/.porthole/servers.json`; live state comes from `lsof` each refresh.
-- **Stale labels** — if a different checkout starts listening on a labeled port, the old label is ignored (shown as "old label: …"). Labels for ports that stay dead 24h are pruned.
-- **Docker-published ports** are listed like any other port, named by compose project · service with the container and image in the submenu. Instead of Kill they get **Stop container…**, which runs `docker stop <container>` for just that container (killing the listening PID would take down all of Docker). Use **Hide this port** for ones you don't care about.
+<p align="center">
+  <img src="assets/screenshots/menu.png" alt="Porthole menu listing five localhost ports with their labels" width="420">
+</p>
+
+## Features
+
+- **Labels from your agent.** After starting a dev server, the agent calls `register_server(port, title, description?)`. Porthole detects the branch and folder itself.
+- **Every listening port, labeled or not.** Ports in 3000–9999 show up even if nobody labeled them, named by `branch · folder`. System processes and database ports are filtered out.
+- **One click to open it.** Click a row to open it in Chrome (or your browser of choice). Hover it for the details and actions.
+- **Jump to the code.** Open the checkout in your editor, a terminal or Finder, at the git root (or the compose project folder for Docker).
+- **Docker-aware.** Published container ports are named by compose project · service, and get **Stop container…** (`docker stop` for just that container) instead of Kill.
+- **No port collisions between agents.** `suggest_free_port` hands out ports that nothing is listening on and no label claims. It reserves them for 2 minutes, so two agents working in parallel never get the same one.
+- **Stays current by itself.** A server shows up or disappears within ~5 s. If a different checkout takes over a labeled port, the old label is set aside. Labels for ports that stay dead for 24 h are pruned.
+
+<p align="center">
+  <img src="assets/screenshots/submenu.png" alt="A port's submenu: branch, uptime, folder, PID, and actions to open, copy, open in editor or terminal, rename, hide or kill" width="640">
+</p>
+
+Each port's submenu shows the branch, uptime, label age, folder and PID, and these actions:
+
+- Open and Copy URL
+- Open in your editor, terminal or Finder
+- Rename… or Label this port…
+- Remove label
+- Hide this port
+- Kill server… (asks first)
 
 ## Install
 
@@ -30,7 +41,9 @@ git clone https://github.com/GregGlickert/porthole.git && cd porthole
 ./scripts/install.sh
 ```
 
-`install.sh` is safe to re-run. It installs dependencies, a launcher at `~/.porthole/bin/porthole`, and the SwiftBar plugin. The launcher finds node each time it runs (nvm default, `PATH`, Volta, Homebrew), so switching or removing node versions doesn't break the menu or your MCP config. To force a specific node, set `PORTHOLE_NODE=/path/to/node`.
+`install.sh` is safe to re-run. It installs dependencies, a launcher at `~/.porthole/bin/porthole`, and the SwiftBar plugin.
+
+The launcher finds node each time it runs (your nvm default, `PATH`, Volta or Homebrew), so switching or removing node versions doesn't break the menu or your MCP config. To force a specific node, set `PORTHOLE_NODE=/path/to/node`.
 
 ## Connect your agent
 
@@ -69,6 +82,16 @@ The server already tells agents when to use it. For clients that ignore server i
 
 > When you start a local dev server (or the user says one is running), call the porthole `register_server` tool with its port and a ≤8-word title describing the feature/branch being tested. Call `suggest_free_port` before picking a port. Update or remove the label when that changes.
 
+### MCP tools
+
+| Tool | What it does |
+|---|---|
+| `register_server(port, title, description?)` | Label a running server. Waits up to 10 s for the port to start listening. |
+| `update_server(port, title?, description?)` | Change a label. |
+| `remove_server(port)` | Clear a label (doesn't stop the server). |
+| `list_servers(port?)` | Every listening dev server with its label, branch, folder, uptime and Docker info. |
+| `suggest_free_port(preferred?, count?)` | Free ports, reserved for 2 minutes. |
+
 ## CLI
 
 ```
@@ -77,7 +100,9 @@ porthole list | register <port> <title> [desc] | remove <port> | open <port> | c
 ```
 (Add `~/.porthole/bin` to your `PATH` to get the `porthole` command, or run `node src/cli.js …`.)
 
-## Hiding ports
+## Settings
+
+### Hiding ports
 
 Use **Hide this port** in a port's submenu, or the CLI:
 
@@ -88,20 +113,49 @@ porthole unignore 8000
 porthole ignored                 # show the list
 ```
 
-Hidden items are listed under **Settings** in the menu — click one to show it again. They live in `~/.porthole/config.json` (**Settings → Open config file…**, or `porthole edit`):
+Hidden items are listed under **Settings** in the menu. Click one to show it again.
+
+### Config file
+
+Settings live in `~/.porthole/config.json`. Open it with **Settings → Open config file…** or `porthole edit`:
 
 ```json
-{ "ignorePorts": [8000], "ignoreCommands": ["claude-science"], "portMin": 3000, "portMax": 9999 }
+{
+  "ignorePorts": [8000],
+  "ignoreCommands": ["claude-science"],
+  "portMin": 3000,
+  "portMax": 9999,
+  "editor": "Zed",
+  "terminal": "iTerm",
+  "browser": "Arc"
+}
 ```
 
-## Env vars
+`editor`, `terminal` and `browser` are optional:
 
-`PORTHOLE_HOME` (default `~/.porthole`), `PORTHOLE_PORT_MIN` / `PORTHOLE_PORT_MAX` (default 3000–9999; `portMin`/`portMax` in config.json override these).
+- **Editor:** without one set, "Open in …" uses the first installed of Cursor, Visual Studio Code, Zed, Windsurf and Sublime Text.
+- **Terminal:** without one set, it uses the first installed of Ghostty, iTerm, Warp and Terminal.
+- **Browser:** without one set, ports open in Google Chrome if it's installed, otherwise in your default browser.
+
+### Environment variables
+
+`PORTHOLE_HOME` (default `~/.porthole`), `PORTHOLE_PORT_MIN` / `PORTHOLE_PORT_MAX` (default 3000–9999; `portMin` / `portMax` in config.json override these).
+
+## How it works
+
+- **Labels** live in `~/.porthole/servers.json`. The MCP server, the CLI and the menu all read and write that one file, with atomic writes. There's no daemon to manage.
+- **The menu** is a SwiftBar streamable plugin: one background process that SwiftBar starts and stops.
+  - Every 5 s it checks the listening ports with `netstat`, which takes ~10 ms.
+  - Only when that list changes does it run the full scan: `lsof` for each process's folder, plus `git`, `ps` and `docker`.
+  - It watches `~/.porthole/` for edits, so label and setting changes show up right away.
+- **Menu clicks** go straight to `open` and `pbcopy` where they can, so opening, copying and "Open in …" don't start node at all.
 
 ## Tests
 
-`npm test`
+```bash
+npm test
+```
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).

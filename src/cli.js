@@ -8,7 +8,8 @@ import { render, where2, describeLive, dockerWhere } from './swiftbar.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { loadConfig, saveConfig, homeDir } from './store.js';
-import { PORT_MIN, PORT_MAX } from './detect.js';
+import { PORT_MIN, PORT_MAX, listenersOn, filterLivePids } from './detect.js';
+import { pickApps, openIn } from './apps.js';
 
 const CLI_PATH = fileURLToPath(import.meta.url);
 const ROOT = path.dirname(path.dirname(CLI_PATH));
@@ -38,8 +39,11 @@ const HELP = `porthole — which feature is on which localhost port
   porthole ignore <port|command>     hide a port or a process name (e.g. claude-science) from the board
   porthole unignore <port|command>   undo ignore
   porthole ignored                   show the ignore list (~/.porthole/config.json)
+  porthole open-editor <port> [dir]  open the server's checkout in your editor (config: "editor")
+  porthole open-terminal <port> [dir] open a terminal in the server's checkout (config: "terminal")
   porthole edit [config|labels]      open ~/.porthole/config.json or servers.json in your editor
-  porthole swiftbar                  SwiftBar plugin output
+  porthole swiftbar                  SwiftBar plugin output (one shot)
+  porthole stream                    SwiftBar streamable plugin: live menu, re-rendered on change
 `;
 
 function ignore(target, add) {
@@ -58,6 +62,17 @@ function ignore(target, add) {
 function die(msg) {
   console.error(msg);
   process.exit(1);
+}
+
+/** Optional positional arg from the menu: "-" (or empty) means absent. */
+const opt = (v) => (v == null || v === '' || v === '-' ? undefined : v);
+
+/** "123,456" → [123, 456], or undefined when absent. */
+function parsePids(v) {
+  if (opt(v) === undefined) return undefined;
+  const pids = String(v).split(',').map(Number);
+  if (!pids.every((p) => Number.isInteger(p) && p > 0)) die(`Invalid PID list: ${v}`);
+  return pids;
 }
 
 function needPort(p) {
@@ -79,31 +94,75 @@ function list() {
 
 function open(port) {
   const url = `http://localhost:${port}`;
-  const r = spawnSync('/usr/bin/open', ['-a', 'Google Chrome', url]);
+  const { browser } = pickApps(loadConfig());
+  const r = browser ? spawnSync('/usr/bin/open', ['-a', browser, url]) : { status: 1 };
   if (r.status !== 0) spawnSync('/usr/bin/open', [url]);
+}
+
+/** Folder for "Open in …": the git checkout root (or compose project dir for Docker). */
+function openFolder(port, kind, dir) {
+  // The menu passes the folder it already knows, so a click doesn't rerun the full scan.
+  if (!dir) {
+    const l = findLive(port);
+    if (!l) die(`Nothing listening on ${port}.`);
+    if (!l.root) die(`No folder known for :${port}.`);
+    dir = l.root;
+  }
+  const app = pickApps(loadConfig())[kind];
+  if (!app) die(`No ${kind} found. Set "${kind}" in ~/.porthole/config.json, e.g. "${kind === 'editor' ? 'Visual Studio Code' : 'Terminal'}".`);
+  openIn(app, dir);
+}
+
+/** ctx for render(): paths for menu actions, settings, and which apps "Open in …" uses. */
+function renderCtx() {
+  const config = loadConfig();
+  return {
+    node: process.execPath,
+    cli: CLI_PATH,
+    config,
+    portMin: PORT_MIN,
+    portMax: PORT_MAX,
+    version: PKG.version,
+    repoUrl: REPO_URL,
+    root: ROOT,
+    ...pickApps(config),
+  };
 }
 
 function copy(port) {
   execFileSync('/usr/bin/pbcopy', { input: `http://localhost:${port}` });
 }
 
-function kill(port) {
+/**
+ * SIGTERM what's on `port`. With `pidsArg` (the menu passes the PIDs it showed), only those PIDs that are still
+ * listening on the port are signalled — a cheap netstat check instead of a full scan, and it never hits a reused PID.
+ */
+function kill(port, pidsArg) {
+  const given = parsePids(pidsArg);
+  if (given) {
+    const pids = filterLivePids(given, listenersOn(port));
+    if (!pids.length) die(`Nothing listening on ${port} with PID ${given.join(', ')} anymore.`);
+    return signal(port, pids, '');
+  }
   const l = findLive(port);
   if (!l) die(`Nothing listening on ${port}.`);
-  if (l.docker) return stopContainer(port, l);
-  for (const pid of l.pids) {
+  if (l.docker) return stopContainer(port, l.docker.container);
+  signal(port, l.pids, ` (${l.command})`);
+}
+
+function signal(port, pids, what) {
+  for (const pid of pids) {
     try {
       process.kill(pid, 'SIGTERM');
     } catch (err) {
       console.error(`Could not kill ${pid}: ${err.message}`);
     }
   }
-  console.log(`Sent SIGTERM to ${l.pids.join(', ')} (${l.command}) on :${port}`);
+  console.log(`Sent SIGTERM to ${pids.join(', ')}${what} on :${port}`);
 }
 
 /** Docker ports: `docker stop` just the publishing container (killing the PID would kill Docker itself). */
-function stopContainer(port, l) {
-  const name = l.docker.container;
+function stopContainer(port, name) {
   if (!name) die(`Port ${port} is published by Docker but its container couldn't be identified (is \`docker ps\` working?).`);
   try {
     execFileSync('docker', ['stop', name], { encoding: 'utf8', timeout: 60000, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -139,35 +198,66 @@ end run`;
   return { button, text: rest.join('\n') };
 }
 
-/** Menu action: ask for a label in a native dialog. Empty → remove the label. */
-async function promptLabel(port) {
+/**
+ * Menu action: ask for a label in a native dialog. Empty → remove the label.
+ * The menu passes `describe`, `cwd` and `branch` so the dialog opens without a scan; from a terminal they're absent.
+ */
+async function promptLabel(port, describe, cwd, branch) {
   const rec = store.load()[String(port)];
-  const l = findLive(port);
-  const stale = rec && rec.cwd && l?.cwd && rec.cwd !== l.cwd;
+  let live; // {cwd, branch} of the server on the port, if known
+  let text = '';
+  if (opt(describe) !== undefined) {
+    live = { cwd: opt(cwd) ?? null, branch: opt(branch) ?? null };
+    text = describe;
+  } else {
+    const l = findLive(port);
+    if (l) (live = l), (text = describeLive(l));
+  }
+  const stale = rec && rec.cwd && live?.cwd && rec.cwd !== live.cwd;
   const current = rec && !stale ? rec.title : '';
   const r = dialog({
-    message: `Label for :${port}${l ? `\n${describeLive(l)}` : ''}\n\nLeave empty to remove the label.`,
+    message: `Label for :${port}${text ? `\n${text}` : ''}\n\nLeave empty to remove the label.`,
     defaultAnswer: current,
   });
   if (!r) return;
   const title = r.text.trim();
   if (!title) return void remove(port);
   if (current) updateLabel({ port, title });
-  else await register({ port, title, waitMs: 0 });
+  else await register({ port, title, waitMs: 0, live });
 }
 
-/** Menu action: confirm before killing. */
-function confirmKill(port) {
+/**
+ * Menu action: confirm before killing. The menu passes the PIDs (or container) and description it showed, so the
+ * dialog opens without a scan; kill() then checks the PIDs are still listening.
+ */
+function confirmKill(port, pidsArg, describe, containerArg) {
+  const container = opt(containerArg);
+  if (parsePids(pidsArg) || container) {
+    const rec = store.load()[String(port)];
+    const what = rec?.title ? `"${rec.title}" — ` : '';
+    const desc = opt(describe) ?? '';
+    const verb = container ? 'Stop' : 'Kill';
+    const r = dialog({
+      message: container
+        ? `Stop ${what}${desc} on :${port}?\nRuns: docker stop ${container}`
+        : `Kill ${what}${desc} on :${port}?\nPID ${parsePids(pidsArg).join(', ')}`,
+      buttons: ['Cancel', verb],
+      defaultButton: 'Cancel',
+      icon: 'caution',
+    });
+    if (r?.button !== verb) return;
+    return container ? stopContainer(port, container) : kill(port, pidsArg);
+  }
   const l = findLive(port);
   if (!l) die(`Nothing listening on ${port}.`);
   const rec = store.load()[String(port)];
   const what = rec?.title ? `"${rec.title}" — ` : '';
-  const container = l.docker && l.docker.container;
-  if (l.docker && !container) die(`Port ${port} is published by Docker but its container couldn't be identified.`);
-  const verb = container ? 'Stop' : 'Kill';
+  const name = l.docker && l.docker.container;
+  if (l.docker && !name) die(`Port ${port} is published by Docker but its container couldn't be identified.`);
+  const verb = name ? 'Stop' : 'Kill';
   const r = dialog({
-    message: container
-      ? `Stop ${what}${describeLive(l)} on :${port}?\nRuns: docker stop ${container}`
+    message: name
+      ? `Stop ${what}${describeLive(l)} on :${port}?\nRuns: docker stop ${name}`
       : `Kill ${what}${describeLive(l)} on :${port}?\nPID ${l.pids.join(', ')}`,
     buttons: ['Cancel', verb],
     defaultButton: 'Cancel',
@@ -183,18 +273,15 @@ async function main() {
     case undefined:
       return list();
     case 'swiftbar':
-      return process.stdout.write(
-        render(getBoard(), {
-          node: process.execPath,
-          cli: CLI_PATH,
-          config: loadConfig(),
-          portMin: PORT_MIN,
-          portMax: PORT_MAX,
-          version: PKG.version,
-          repoUrl: REPO_URL,
-          root: ROOT,
-        }),
-      );
+      return process.stdout.write(render(getBoard(), renderCtx()));
+    case 'stream': {
+      const { runStream } = await import('./stream.js');
+      return runStream({ renderCtx });
+    }
+    case 'open-editor':
+      return openFolder(needPort(args[0]), 'editor', args[1]);
+    case 'open-terminal':
+      return openFolder(needPort(args[0]), 'terminal', args[1]);
     case 'register': {
       const [p, title, ...desc] = args;
       const rec = await register({ port: needPort(p), title, description: desc.join(' ') || undefined, waitMs: 3000 });
@@ -207,11 +294,11 @@ async function main() {
     case 'copy':
       return copy(needPort(args[0]));
     case 'kill':
-      return kill(needPort(args[0]));
+      return kill(needPort(args[0]), args[1]);
     case 'confirm-kill':
-      return confirmKill(needPort(args[0]));
+      return confirmKill(needPort(args[0]), ...args.slice(1));
     case 'prompt-label':
-      return promptLabel(needPort(args[0]));
+      return promptLabel(needPort(args[0]), ...args.slice(1));
     case 'ignore':
       return ignore(args[0], true);
     case 'unignore':
