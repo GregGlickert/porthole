@@ -25,12 +25,12 @@ enum Dialogs {
     return a.runModal() == .alertFirstButtonReturn ? field.stringValue : nil
   }
 
-  /// Destructive confirmation with Cancel as the default button.
+  /// Destructive confirmation with Cancel as the default button. The Stop/Kill button is a plain button:
+  /// `hasDestructiveAction` draws red text on a red-tinted glass button, which is hard to read.
   static func confirm(_ message: String, info: String, button: String) -> Bool {
     let a = alert(message, info: info, style: .warning)
     a.addButton(withTitle: "Cancel")
-    let go = a.addButton(withTitle: button)
-    go.hasDestructiveAction = true
+    a.addButton(withTitle: button)
     return a.runModal() == .alertSecondButtonReturn
   }
 
