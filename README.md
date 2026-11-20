@@ -26,7 +26,7 @@ Each port's submenu shows the branch, uptime, label age, folder and PID, and the
 
 - Open and Copy URL
 - Open in your editor, terminal or Finder
-- Rename… or Label this port…
+- Rename or Label this port
 - Remove label
 - Hide this port
 - Kill server… (asks first)
