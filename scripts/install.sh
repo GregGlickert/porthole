@@ -43,9 +43,11 @@ elif [ -z "$PLUGIN_DIR" ]; then
   warn "SwiftBar has no plugin folder yet. Launch SwiftBar, choose one, and re-run this script."
 else
   mkdir -p "$PLUGIN_DIR"
-  sed -e "s#__PORTHOLE__#$BIN#" swiftbar/porthole.5s.sh > "$PLUGIN_DIR/porthole.5s.sh"
-  chmod +x "$PLUGIN_DIR/porthole.5s.sh"
-  ok "SwiftBar plugin installed: $PLUGIN_DIR/porthole.5s.sh"
+  # Older installs refreshed every 5s; drop them so only one copy runs.
+  rm -f "$PLUGIN_DIR/porthole.5s.sh"
+  sed -e "s#__PORTHOLE__#$BIN#" swiftbar/porthole.60s.sh > "$PLUGIN_DIR/porthole.60s.sh"
+  chmod +x "$PLUGIN_DIR/porthole.60s.sh"
+  ok "SwiftBar plugin installed: $PLUGIN_DIR/porthole.60s.sh"
   open -g "swiftbar://refreshallplugins" 2>/dev/null || true
 fi
 
