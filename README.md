@@ -15,7 +15,7 @@ Refresh
 ```
 
 - **MCP server** (`src/mcp.js`) — your agent calls `register_server(port, title, description?)` after starting a dev server. Branch and folder are detected automatically. Also `update_server`, `remove_server`, `list_servers` (optional `port` filter; includes uptime and Docker container info), and `suggest_free_port(preferred?, count?)`, which returns ports nothing is listening on and no label claims.
-- **SwiftBar plugin** — refreshes every 5s. Shows every listening port in 3000–9999 (system processes and DB ports filtered), with git branch, even if unregistered.
+- **SwiftBar plugin** — refreshes every 60s, and immediately whenever an agent registers, updates or removes a label. Shows every listening port in 3000–9999 (system processes and DB ports filtered), with git branch, even if unregistered.
 - **No daemon** — labels live in `~/.porthole/servers.json`; live state comes from `lsof` each refresh.
 - **Stale labels** — if a different checkout starts listening on a labeled port, the old label is ignored (shown as "old label: …"). Labels for ports that stay dead 24h are pruned.
 - **Docker-published ports** are listed like any other port, named by compose project · service with the container and image in the submenu. Instead of Kill they get **Stop container…**, which runs `docker stop <container>` for just that container (killing the listening PID would take down all of Docker). Use **Hide this port** for ones you don't care about.

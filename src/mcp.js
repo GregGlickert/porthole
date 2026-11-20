@@ -4,6 +4,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import fs from 'node:fs';
+import { spawn } from 'node:child_process';
 import { getBoard, register, updateLabel, remove, suggestFreePorts } from './board.js';
 
 const PKG = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
@@ -18,6 +19,19 @@ const server = new McpServer(
       'Use list_servers to answer "what is on port X?".',
   },
 );
+
+// Ask SwiftBar to redraw the menu now instead of waiting for its 60s timer.
+// Only label changes call this; the plugin's own writes (lastSeenAt) must not, or it would refresh itself in a loop.
+function refreshMenuBar() {
+  if (process.platform !== 'darwin' || process.env.PORTHOLE_NO_MENU_REFRESH) return;
+  try {
+    const child = spawn('/usr/bin/open', ['-g', 'swiftbar://refreshplugin?name=porthole'], { stdio: 'ignore', detached: true });
+    child.on('error', () => {}); // SwiftBar not installed: nothing to refresh
+    child.unref();
+  } catch {
+    /* ignore */
+  }
+}
 
 const json = (obj) => ({ content: [{ type: 'text', text: JSON.stringify(obj, null, 2) }] });
 const fail = (err) => ({ content: [{ type: 'text', text: `Error: ${err.message}` }], isError: true });
@@ -38,7 +52,9 @@ server.registerTool(
   },
   async (args) => {
     try {
-      return json({ registered: await register(args) });
+      const registered = await register(args);
+      refreshMenuBar();
+      return json({ registered });
     } catch (err) {
       return fail(err);
     }
@@ -54,7 +70,9 @@ server.registerTool(
   },
   async (args) => {
     try {
-      return json({ updated: updateLabel(args) });
+      const updated = updateLabel(args);
+      refreshMenuBar();
+      return json({ updated });
     } catch (err) {
       return fail(err);
     }
@@ -70,7 +88,9 @@ server.registerTool(
   },
   async ({ port }) => {
     try {
-      return json({ removed: remove(port) });
+      const removed = remove(port);
+      refreshMenuBar();
+      return json({ removed });
     } catch (err) {
       return fail(err);
     }
