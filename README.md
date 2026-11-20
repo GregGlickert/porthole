@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/app-icon.png" alt="Porthole app icon: a brass porthole looking out on the sea" width="128">
+</p>
+
 # Porthole
 
 **Which feature is running on which localhost port**, right in your macOS menu bar, labeled by your coding agent.
@@ -5,7 +9,7 @@
 When you have three checkouts, two worktrees and a Docker stack all serving something on `localhost`, it's hard to remember that `:4100` is your main storefront and `:4102` is yesterday's cart-totals fix. Porthole gives every port a name. Your agent (Claude Code, Codex, Cursor or any MCP client) labels the dev server it just started, and the menu shows the label next to the port with its branch, folder and uptime.
 
 <p align="center">
-  <img src="assets/screenshots/menu.png" alt="Porthole menu listing five localhost ports with their labels" width="420">
+  <img src="assets/screenshots/menu.png" alt="Porthole menu listing five localhost ports with their labels" width="400">
 </p>
 
 ## Features
@@ -16,10 +20,11 @@ When you have three checkouts, two worktrees and a Docker stack all serving some
 - **Jump to the code.** Open the checkout in your editor, a terminal or Finder, at the git root (or the compose project folder for Docker).
 - **Docker-aware.** Published container ports are named by compose project · service, and get **Stop container…** (`docker stop` for just that container) instead of Kill.
 - **No port collisions between agents.** `suggest_free_port` hands out ports that nothing is listening on and no label claims. It reserves them for 2 minutes, so two agents working in parallel never get the same one.
-- **Stays current by itself.** A server shows up or disappears within ~5 s. If a different checkout takes over a labeled port, the old label is set aside. Labels for ports that stay dead for 24 h are pruned.
+- **Stays current by itself.** A server shows up or disappears within ~5 s, even while the menu is open. If a different checkout takes over a labeled port, the old label is set aside. Labels for ports that stay dead for 24 h are pruned.
+- **A real Mac app.** Porthole is a small native menu bar app. **Quit Porthole** (⌘Q) stops it completely; open it again from Spotlight or Applications. Turn on **Settings → Launch at login** to start it automatically.
 
 <p align="center">
-  <img src="assets/screenshots/submenu.png" alt="A port's submenu: branch, uptime, folder, PID, and actions to open, copy, open in editor or terminal, rename, hide or kill" width="640">
+  <img src="assets/screenshots/submenu.png" alt="A port's submenu: branch, description, uptime, folder, PID, and actions to open, copy, open in editor, terminal or Finder, rename, remove the label, hide or kill" width="680">
 </p>
 
 Each port's submenu shows the branch, uptime, label age, folder and PID, and these actions:
@@ -33,17 +38,28 @@ Each port's submenu shows the branch, uptime, label age, folder and PID, and the
 
 ## Install
 
-Requires macOS, Node 20+ and [SwiftBar](https://swiftbar.app).
+Requires macOS 14+ and Swift 6 (Xcode, or the Command Line Tools: `xcode-select --install`). No Node, no SwiftBar.
 
 ```bash
-brew install --cask swiftbar          # launch it once and pick a plugin folder
 git clone https://github.com/GregGlickert/porthole.git && cd porthole
 ./scripts/install.sh
 ```
 
-`install.sh` is safe to re-run. It installs dependencies, a launcher at `~/.porthole/bin/porthole`, and the SwiftBar plugin.
+`install.sh` builds `Porthole.app`, copies it to `/Applications`, links the `porthole` command at `~/.porthole/bin/porthole`, and starts the menu. It's safe to re-run after pulling changes.
 
-The launcher finds node each time it runs (your nvm default, `PATH`, Volta or Homebrew), so switching or removing node versions doesn't break the menu or your MCP config. To force a specific node, set `PORTHOLE_NODE=/path/to/node`.
+**Upgrading from the Node + SwiftBar version?** Just run `install.sh`. It removes the old SwiftBar plugin, and your labels, settings and MCP configs carry over unchanged (same files, same `~/.porthole/bin/porthole` path). You can uninstall SwiftBar afterwards if nothing else uses it.
+
+To build the app without installing it: `scripts/build-app.sh` (writes `.build/Porthole.app`).
+
+### Uninstall
+
+Quit Porthole from its menu, then:
+
+```bash
+rm -rf /Applications/Porthole.app ~/.porthole   # ~/.porthole holds your labels and settings
+```
+
+Remove the `porthole` server from your MCP clients too (for Claude Code: `claude mcp remove porthole -s user`).
 
 ## Connect your agent
 
@@ -95,10 +111,11 @@ The server already tells agents when to use it. For clients that ignore server i
 ## CLI
 
 ```
-porthole list | register <port> <title> [desc] | remove <port> | open <port> | copy <port> | kill <port>
-         | confirm-kill <port> | prompt-label <port> | ignore/unignore <port|command> | ignored | edit | swiftbar
+porthole list [--json] | register <port> <title> [desc] | remove <port> | open <port> | copy <port>
+         | kill <port> [pids] | ignore/unignore <port|command> | ignored | open-editor <port> | open-terminal <port>
+         | edit [config|labels] | mcp
 ```
-(Add `~/.porthole/bin` to your `PATH` to get the `porthole` command, or run `node src/cli.js …`.)
+Add `~/.porthole/bin` to your `PATH` to get the `porthole` command. `porthole <command> --help` shows details.
 
 ## Settings
 
@@ -143,18 +160,25 @@ Settings live in `~/.porthole/config.json`. Open it with **Settings → Open con
 
 ## How it works
 
-- **Labels** live in `~/.porthole/servers.json`. The MCP server, the CLI and the menu all read and write that one file, with atomic writes. There's no daemon to manage.
-- **The menu** is a SwiftBar streamable plugin: one background process that SwiftBar starts and stops.
-  - Every 5 s it checks the listening ports with `netstat`, which takes ~10 ms.
-  - Only when that list changes does it run the full scan: `lsof` for each process's folder, plus `git`, `ps` and `docker`.
-  - It watches `~/.porthole/` for edits, so label and setting changes show up right away.
-- **Menu clicks** go straight to `open` and `pbcopy` where they can, so opening, copying and "Open in …" don't start node at all.
+- **Labels** live in `~/.porthole/servers.json`. The MCP server, the CLI and the menu app all read and write that one file, with atomic writes. There's no daemon to manage: the MCP server is started by your agent, and the menu app runs only while you want it to.
+- **`Porthole.app`** contains two programs built from one Swift package: the menu bar app (`Contents/MacOS/Porthole`) and the `porthole` CLI / MCP server (`Contents/Helpers/porthole`). They share the `PortholeCore` library.
+- **Detection** asks the kernel directly (`libproc`) for listening sockets, each process's folder and start time, in about 3 ms. Branches come from reading `.git/HEAD`. The only external command is `docker`, and only when Docker has published ports.
+  - Every 5 s the menu takes that cheap snapshot of listening ports, and does the full scan only when it changes.
+  - It watches `~/.porthole/` for edits: changes from agents, the CLI and the menu show up right away, and hand edits to `servers.json` or `config.json` within 5 s.
+  - `libproc` only sees your own processes, so `suggest_free_port` also checks each port by trying to bind it, which catches ports held by root or other users.
 
-## Tests
+## Development
 
 ```bash
-npm test
+swift build                              # CLI (.build/debug/porthole) and app (.build/debug/PortholeApp)
+swift test                               # PortholeCore tests
+scripts/build-app.sh                     # .build/Porthole.app
+swift scripts/make-app-icon.swift Resources/AppIcon.icns   # regenerate the app icon
+swift scripts/make-icon.swift assets/porthole-icon.png      # regenerate the menu bar icon
+scripts/demo-ports.sh start              # demo servers on :4100–:4104 for screenshots (stop: … stop)
 ```
+
+The code is one Swift package: `PortholeCore` (detection, labels, menu model), `porthole` (CLI and MCP server) and `PortholeApp` (the menu bar app).
 
 ## License
 
