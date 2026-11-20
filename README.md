@@ -2,7 +2,7 @@
 
 **Which feature is running on which localhost port**, right in your macOS menu bar, labeled by your coding agent.
 
-When you have three checkouts, two worktrees and a Docker stack all serving something on `localhost`, it's hard to remember that `:3001` is the checkout redesign and `:3003` is the bug fix from yesterday. Porthole gives every port a name. Your agent (Claude Code, Codex, Cursor or any MCP client) labels the dev server it just started, and the menu shows the label next to the port with its branch, folder and uptime.
+When you have three checkouts, two worktrees and a Docker stack all serving something on `localhost`, it's hard to remember that `:4100` is your main storefront and `:4102` is yesterday's cart-totals fix. Porthole gives every port a name. Your agent (Claude Code, Codex, Cursor or any MCP client) labels the dev server it just started, and the menu shows the label next to the port with its branch, folder and uptime.
 
 <p align="center">
   <img src="assets/screenshots/menu.png" alt="Porthole menu listing five localhost ports with their labels" width="420">
@@ -11,7 +11,7 @@ When you have three checkouts, two worktrees and a Docker stack all serving some
 ## Features
 
 - **Labels from your agent.** After starting a dev server, the agent calls `register_server(port, title, description?)`. Porthole detects the branch and folder itself.
-- **Every listening port, labeled or not.** Ports in 3000–9999 show up even if nobody labeled them, named by `branch · folder`. System processes and database ports are filtered out.
+- **Every listening port, labeled or not.** Ports in 3000–9999 show up even if nobody labeled them, named by `branch · folder` (like `:4102` above). System processes and database ports are filtered out.
 - **One click to open it.** Click a row to open it in Chrome (or your browser of choice). Hover it for the details and actions.
 - **Jump to the code.** Open the checkout in your editor, a terminal or Finder, at the git root (or the compose project folder for Docker).
 - **Docker-aware.** Published container ports are named by compose project · service, and get **Stop container…** (`docker stop` for just that container) instead of Kill.
