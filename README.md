@@ -38,7 +38,7 @@ Each port's submenu shows the branch, uptime, label age, folder and PID, and the
 
 ## Install
 
-Requires macOS 14+ and Swift 6 (Xcode, or the Command Line Tools: `xcode-select --install`). No Node, no SwiftBar.
+Requires macOS 14+ and Swift 6 (Xcode, or the Command Line Tools: `xcode-select --install`).
 
 ```bash
 git clone https://github.com/GregGlickert/porthole.git && cd porthole
