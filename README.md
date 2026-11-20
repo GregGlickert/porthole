@@ -9,7 +9,7 @@
 When you have three checkouts, two worktrees and a Docker stack all serving something on `localhost`, it's hard to remember that `:4100` is your main storefront and `:4102` is yesterday's cart-totals fix. Porthole gives every port a name. Your agent (Claude Code, Codex, Cursor or any MCP client) labels the dev server it just started, and the menu shows the label next to the port with its branch, folder and uptime.
 
 <p align="center">
-  <img src="assets/screenshots/menu.png" alt="Porthole menu listing five localhost ports with their labels" width="420">
+  <img src="assets/screenshots/menu.png" alt="Porthole menu listing five localhost ports with their labels" width="480">
 </p>
 
 ## Features
@@ -24,7 +24,7 @@ When you have three checkouts, two worktrees and a Docker stack all serving some
 - **A real Mac app.** Porthole is a small native menu bar app. **Quit Porthole** (⌘Q) stops it completely; open it again from Spotlight or Applications. Turn on **Settings → Launch at login** to start it automatically.
 
 <p align="center">
-  <img src="assets/screenshots/submenu.png" alt="A port's submenu: branch, uptime, folder, PID, and actions to open, copy, open in editor or terminal, rename, hide or kill" width="640">
+  <img src="assets/screenshots/submenu.png" alt="A port's submenu: branch, description, uptime, folder, PID, and actions to open, copy, open in editor, terminal or Finder, rename, remove the label, hide or kill" width="720">
 </p>
 
 Each port's submenu shows the branch, uptime, label age, folder and PID, and these actions:
@@ -175,6 +175,7 @@ swift test                               # PortholeCore tests
 scripts/build-app.sh                     # .build/Porthole.app
 swift scripts/make-app-icon.swift Resources/AppIcon.icns   # regenerate the app icon
 swift scripts/make-icon.swift assets/porthole-icon.png      # regenerate the menu bar icon
+scripts/demo-ports.sh start              # demo servers on :4100–:4104 for screenshots (stop: … stop)
 ```
 
 The code is one Swift package: `PortholeCore` (detection, labels, menu model), `porthole` (CLI and MCP server) and `PortholeApp` (the menu bar app).
